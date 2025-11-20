@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Word, WordTranslation, Language } from '../types';
+import { Word, WordTranslation } from '../types';
 import { Card, Input } from './UI';
 
-export const Dictionary: React.FC<{ words: Word[], wordTranslations: WordTranslation[], targetLanguage: Language }> = ({ words, wordTranslations, targetLanguage }) => {
+export const Dictionary: React.FC<{ words: Word[], wordTranslations: WordTranslation[] }> = ({ words, wordTranslations }) => {
   const [search, setSearch] = useState('');
   const filtered = words.filter(w => w.text.includes(search));
 

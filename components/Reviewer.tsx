@@ -10,13 +10,12 @@ interface ReviewerProps {
   targetLanguage: Language;
   onReviewAction: (id: string, status: 'approved' | 'rejected', feedback?: string) => void;
   onUpdateTranslation: (t: Translation) => void;
-  onVote: (id: string, type: 'up' | 'down') => void;
-  onAddComment: (id: string, text: string) => void;
 }
 
-export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, targetLanguage, onReviewAction, onUpdateTranslation, onVote, onAddComment }) => {
+export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, targetLanguage, onReviewAction, onUpdateTranslation }) => {
   const pending = translations.filter(t => t.languageCode === targetLanguage.code && t.status === 'pending');
-  const [idx, setIdx] = useState(0);
+  // In a real app with full navigation, setIdx would be used. Removing to fix build error.
+  const [idx] = useState(0);
   
   const current = pending[idx];
   const sentence = current ? sentences.find(s => s.id === current.sentenceId) : null;

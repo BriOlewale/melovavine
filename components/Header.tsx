@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { User } from '../types';
 import { Button } from './UI';
 import { StorageService } from '../services/storageService';
@@ -6,21 +6,11 @@ import { StorageService } from '../services/storageService';
 interface HeaderProps {
   user: User | null;
   onNavigate: (page: string) => void;
-  currentPage: string;
   onSwitchRole: () => void;
   pendingReviewCount?: number;
 }
 
-export const Header: React.FC<HeaderProps> = ({ user, onNavigate, currentPage, onSwitchRole, pendingReviewCount = 0 }) => {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  useEffect(() => {
-    window.addEventListener('online', () => setIsOnline(true));
-    window.addEventListener('offline', () => setIsOnline(false));
-  }, []);
-
-  const handleSync = () => { setIsSyncing(true); setTimeout(() => setIsSyncing(false), 1000); };
+export const Header: React.FC<HeaderProps> = ({ user, onNavigate, onSwitchRole, pendingReviewCount = 0 }) => {
   const canReview = StorageService.hasPermission(user, 'translation.review');
   const canAdmin = StorageService.hasPermission(user, 'user.read');
 

@@ -190,7 +190,7 @@ export const StorageService = {
       StorageService.saveStoredUsers(users);
       return { success: true, message: 'Verified' };
   },
-  requestPasswordReset: (email: string) => ({ success: true, token: '123' }),
+  requestPasswordReset: (_email: string) => ({ success: true, token: '123' }),
   updateUser: (u: User) => {
       const users = StorageService.getStoredUsers();
       const idx = users.findIndex(x => x.id === u.id);

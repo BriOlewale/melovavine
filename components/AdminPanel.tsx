@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Sentence, Translation, User, Project, UserGroup, AuditLog, SystemSettings } from '../types';
-import { Button, Card, Input, Modal } from './UI';
-import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
+import { Sentence, Translation } from '../types';
+import { Button, Card, Input } from './UI';
+import { StorageService } from '../services/storageService';
 
 export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sentence[], translations: Translation[], onClearAll: Function }> = ({ onImportSentences, onClearAll }) => {
   const [tab, setTab] = useState('users');
-  const [users, setUsers] = useState(StorageService.getAllUsers());
+  const [users] = useState(StorageService.getAllUsers());
   const [settings, setSettings] = useState(StorageService.getSystemSettings());
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {

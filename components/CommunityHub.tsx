@@ -1,8 +1,8 @@
 import React from 'react';
-import { User, Announcement, ForumTopic } from '../types';
-import { Card, Button } from './UI';
+import { Announcement, ForumTopic } from '../types';
+import { Card } from './UI';
 
-export const CommunityHub: React.FC<{ user: User, announcements: Announcement[], forumTopics: ForumTopic[], onAddAnnouncement: Function, onAddTopic: Function, onReplyToTopic: Function }> = ({ announcements }) => {
+export const CommunityHub: React.FC<{ announcements: Announcement[], forumTopics: ForumTopic[], onAddAnnouncement: Function, onAddTopic: Function, onReplyToTopic: Function }> = ({ announcements }) => {
   return (
     <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
        <div>

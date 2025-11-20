@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sentence, Translation, User, Language, Word, WordTranslation } from '../types';
-import { Button, Card, Badge } from './UI';
+import { Button, Card } from './UI';
 import { getTranslationSuggestion } from '../services/geminiService';
 import { WordDefinitionModal } from './WordDefinitionModal';
 import { SentenceNavigator } from './SentenceNavigator';
@@ -18,7 +18,7 @@ interface TranslatorProps {
   onVote: (id: string, type: 'up' | 'down') => void;
 }
 
-export const Translator: React.FC<TranslatorProps> = ({ sentences, translations, user, targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation }) => {
+export const Translator: React.FC<TranslatorProps> = ({ sentences, translations, user, targetLanguage, onSaveTranslation, wordTranslations, onSaveWordTranslation }) => {
   const [index, setIndex] = useState(0);
   const [text, setText] = useState('');
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
@@ -70,7 +70,7 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
              <Button onClick={handleSave}>Submit</Button>
           </div>
        </Card>
-       {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={[]} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, sentence.id); setSelectedWord(null); }} />}
+       {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={wordTranslations.filter(wt => wt.wordId === selectedWord.n || wt.wordId === 'temp')} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, sentence.id); setSelectedWord(null); }} />}
        <SentenceNavigator isOpen={isNavOpen} onClose={() => setIsNavOpen(false)} sentences={sentences} translations={translations} targetLanguage={targetLanguage} onSelectSentence={setIndex} />
     </div>
   );

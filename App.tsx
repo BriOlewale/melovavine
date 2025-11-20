@@ -135,15 +135,15 @@ const App: React.FC = () => {
               <button onClick={() => setShowDemoBanner(false)} className="text-indigo-200 hover:text-white">&times;</button>
           </div>
       )}
-      <Header user={user} onNavigate={handleNavigate} currentPage={currentPage} onSwitchRole={handleLogout} pendingReviewCount={pendingReviewCount} />
+      <Header user={user} onNavigate={handleNavigate} onSwitchRole={handleLogout} pendingReviewCount={pendingReviewCount} />
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="space-y-6">
             {currentPage === 'dashboard' && <Dashboard sentences={sentences} translations={translations} language={targetLanguage} />}
-            {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
+            {currentPage === 'community' && <CommunityHub announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
             {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} />}
-            {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} targetLanguage={targetLanguage} />}
+            {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
-            {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onVote={handleVote} onUpdateTranslation={handleSaveTranslation} onAddComment={handleAddComment} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
+            {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
             {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} sentences={sentences} translations={translations} onClearAll={handleClearAll} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
         </div>
       </main>
