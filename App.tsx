@@ -26,6 +26,20 @@ const App: React.FC = () => {
   const [showDemoBanner, setShowDemoBanner] = useState(true);
 
   useEffect(() => {
+    // Check for verification token in URL
+    const params = new URLSearchParams(window.location.search);
+    const verifyToken = params.get('verify');
+    if (verifyToken) {
+        const res = StorageService.verifyEmail(verifyToken);
+        if (res.success) {
+            alert("Email verified successfully! You can now log in.");
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } else {
+            alert("Verification failed or token expired.");
+        }
+    }
+
     let storedUser = StorageService.getCurrentUser();
     if (storedUser) {
         storedUser.effectivePermissions = StorageService.calculateEffectivePermissions(storedUser);

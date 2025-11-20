@@ -154,6 +154,10 @@ export interface SystemSettings {
   geminiApiKey?: string;
   showDemoBanner: boolean;
   maintenanceMode: boolean;
+  // EmailJS Configuration
+  emailJsServiceId?: string;
+  emailJsTemplateId?: string;
+  emailJsPublicKey?: string;
 }
 
 export interface AppState {

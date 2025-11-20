@@ -3,7 +3,7 @@ import { Sentence, Translation, User, UserGroup, Project, AuditLog, Permission }
 import { Button, Card, Input, Modal, Badge } from './UI';
 import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
 
-export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sentence[], translations: Translation[], onClearAll: Function }> = ({ onImportSentences, sentences, translations, onClearAll }) => {
+export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sentence[], translations: Translation[], onClearAll: Function }> = ({ onImportSentences, translations, onClearAll }) => {
   const [tab, setTab] = useState('users');
   
   // Data State
@@ -316,21 +316,42 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
 
           {/* SETTINGS TAB */}
           {tab === 'settings' && (
-              <div className="max-w-xl">
-                 <h2 className="text-2xl font-bold mb-6">System Settings</h2>
+              <div className="max-w-xl space-y-6">
+                 <h2 className="text-2xl font-bold">System Settings</h2>
+                 
+                 {/* AI Settings */}
                  <Card>
+                     <h3 className="text-lg font-medium mb-4">Artificial Intelligence</h3>
                      <Input label="Google Gemini API Key" type="password" value={settings.geminiApiKey || ''} onChange={e => setSettings({...settings, geminiApiKey: e.target.value})} />
-                     <p className="text-xs text-gray-500 mt-2 mb-4">Required for AI suggestions and quality scoring.</p>
-                     
-                     <label className="flex items-center space-x-2 mt-4">
+                     <p className="text-xs text-gray-500 mt-2">Required for translation suggestions and quality scoring.</p>
+                 </Card>
+
+                 {/* Email Settings */}
+                 <Card>
+                     <h3 className="text-lg font-medium mb-4">Email Configuration (EmailJS)</h3>
+                     <p className="text-xs text-gray-500 mb-4">
+                         Sign up at <a href="https://www.emailjs.com/" target="_blank" className="text-brand-600 hover:underline">EmailJS.com</a> to get these keys.
+                         This allows the app to send real email confirmations.
+                     </p>
+                     <div className="space-y-3">
+                        <Input label="Service ID" value={settings.emailJsServiceId || ''} onChange={e => setSettings({...settings, emailJsServiceId: e.target.value})} placeholder="service_xxxx" />
+                        <Input label="Template ID" value={settings.emailJsTemplateId || ''} onChange={e => setSettings({...settings, emailJsTemplateId: e.target.value})} placeholder="template_xxxx" />
+                        <Input label="Public Key" type="password" value={settings.emailJsPublicKey || ''} onChange={e => setSettings({...settings, emailJsPublicKey: e.target.value})} placeholder="Public Key" />
+                     </div>
+                 </Card>
+
+                 {/* General Settings */}
+                 <Card>
+                     <h3 className="text-lg font-medium mb-4">General</h3>
+                     <label className="flex items-center space-x-2">
                         <input type="checkbox" checked={settings.showDemoBanner} onChange={e => setSettings({...settings, showDemoBanner: e.target.checked})} />
                         <span>Show "Demo Mode" Banner</span>
                      </label>
-                     
-                     <div className="mt-6">
-                        <Button onClick={saveSettings}>Save Settings</Button>
-                     </div>
                  </Card>
+                 
+                 <div className="pt-4">
+                    <Button onClick={saveSettings} className="w-full">Save All Settings</Button>
+                 </div>
               </div>
           )}
        </main>

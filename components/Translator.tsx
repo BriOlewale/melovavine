@@ -124,10 +124,34 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                        </button>
                     </div>
                  </div>
-                 <div className="mt-3 flex gap-2 border-t pt-2">
-                    <button onClick={() => setHistoryModalTranslation(t)} className="text-xs text-gray-500 hover:text-gray-700 flex items-center">
-                       <span>🕒 History</span>
-                    </button>
+                 
+                 {/* Comments Section */}
+                 <div className="mt-3 pt-2 border-t border-gray-200">
+                     {t.comments && t.comments.length > 0 && (
+                         <div className="space-y-1 mb-2">
+                             {t.comments.map(c => (
+                                 <div key={c.id} className="text-xs bg-white p-1 rounded border">
+                                     <span className="font-bold">{c.userName}:</span> {c.text}
+                                 </div>
+                             ))}
+                         </div>
+                     )}
+                     <div className="flex gap-2">
+                         <input 
+                            type="text" 
+                            placeholder="Add a comment..." 
+                            className="flex-1 text-xs border rounded px-2 py-1 focus:ring-1 focus:ring-brand-500 focus:outline-none"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    onAddComment(t.id, e.currentTarget.value);
+                                    e.currentTarget.value = '';
+                                }
+                            }}
+                         />
+                         <button className="text-xs text-brand-600 hover:underline" onClick={() => setHistoryModalTranslation(t)}>
+                            History
+                         </button>
+                     </div>
                  </div>
               </Card>
             );
