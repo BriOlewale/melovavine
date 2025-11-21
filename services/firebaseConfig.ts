@@ -2,14 +2,18 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// Safely access import.meta.env. 
+// In some environments, .env might be undefined, so we default to {} to prevent crashes.
+const env = (import.meta as any).env || {};
+
 const firebaseConfig = {
-  apiKey: "AIzaSyAdoWCLtntD9sOsJF9bBq8PixyxqLPU5qM",
-  authDomain: "vavanagi.firebaseapp.com",
-  projectId: "vavanagi",
-  storageBucket: "vavanagi.firebasestorage.app",
-  messagingSenderId: "120967964890",
-  appId: "1:120967964890:web:563192d567b667c1f35de3",
-  measurementId: "G-XFC6GDWC4N"
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID,
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
