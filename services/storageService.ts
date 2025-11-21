@@ -156,23 +156,38 @@ export const StorageService = {
 
   login: async (email: string, password: string) => {
       const users = StorageService.getStoredUsers();
-      if (email.toLowerCase() === 'brime.olewale@gmail.com' && password === 'admin') {
-           let su = users.find(u => u.email === email);
-           if (!su) {
-               su = { id: 'super-admin', name: 'Brime Olewale', email, role: 'admin', isActive: true, groupIds: ['g-admin'], password: 'admin', isVerified: true };
-               users.push(su);
-               StorageService.saveStoredUsers(users);
-           }
-           const session = { ...su, effectivePermissions: ['*'] as Permission[] };
-           StorageService.saveCurrentUser(session);
-           return { success: true, user: session };
+      let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+      // FIRST TIME SETUP ONLY: If the Super Admin doesn't exist in DB yet, create them.
+      // But if they DO exist, we trust the DB password, allowing changes.
+      if (!user && email.toLowerCase() === 'brime.olewale@gmail.com' && password === 'admin') {
+           user = { 
+               id: 'super-admin', 
+               name: 'Brime Olewale', 
+               email: 'brime.olewale@gmail.com', 
+               role: 'admin', 
+               isActive: true, 
+               groupIds: ['g-admin'], 
+               password: 'admin', 
+               isVerified: true 
+           };
+           users.push(user);
+           StorageService.saveStoredUsers(users);
       }
-      const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-      if (!user || !user.isActive) return { success: false, message: 'Invalid login' };
+
+      // Now check credentials against the DB
+      if (!user || user.password !== password) {
+          return { success: false, message: 'Invalid login' };
+      }
+      
+      if (!user.isActive) return { success: false, message: 'Account is deactivated' };
       
       const session = { ...user, effectivePermissions: StorageService.calculateEffectivePermissions(user) };
-      StorageService.saveCurrentUser(session);
-      return { success: true, user: session };
+      // Remove password from session object for security
+      const { password: _, ...safeSession } = session as any;
+      
+      StorageService.saveCurrentUser(safeSession);
+      return { success: true, user: safeSession };
   },
   register: async (email: string, password: string, name: string) => {
       const users = StorageService.getStoredUsers();
