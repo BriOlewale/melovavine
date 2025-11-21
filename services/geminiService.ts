@@ -2,8 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { Language } from '../types';
 import { StorageService } from './storageService';
 
-const getAIClient = () => {
-    const settings = StorageService.getSystemSettings();
+const getAIClient = async () => {
+    const settings = await StorageService.getSystemSettings();
     // Prioritize the key from Admin Settings. 
     // We avoid accessing process.env directly to prevent browser crashes.
     const key = settings.geminiApiKey || '';
@@ -17,7 +17,7 @@ const getAIClient = () => {
 
 export const getTranslationSuggestion = async (sentence: string, targetLanguage: Language): Promise<string> => {
   try {
-    const ai = getAIClient();
+    const ai = await getAIClient();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Translate to ${targetLanguage.name}: "${sentence}"`,
@@ -31,7 +31,7 @@ export const getTranslationSuggestion = async (sentence: string, targetLanguage:
 
 export const validateTranslation = async (original: string, translation: string, language: Language): Promise<{ score: number; feedback: string }> => {
     try {
-        const ai = getAIClient();
+        const ai = await getAIClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Rate translation 1-10 and feedback. English: "${original}". ${language.name}: "${translation}". Return JSON { "score": number, "feedback": string }`,

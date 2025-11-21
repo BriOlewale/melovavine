@@ -5,13 +5,14 @@ import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
 
 export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sentence[], translations: Translation[], onClearAll: Function }> = ({ onImportSentences, translations, onClearAll }) => {
   const [tab, setTab] = useState('users');
+  const [isLoading, setIsLoading] = useState(false);
   
   // Data State
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [settings, setSettings] = useState(StorageService.getSystemSettings());
+  const [settings, setSettings] = useState<any>({});
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Modal State
@@ -31,12 +32,22 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
     setCurrentUser(StorageService.getCurrentUser());
   }, [tab]);
 
-  const loadData = () => {
-    setUsers(StorageService.getAllUsers());
-    setGroups(StorageService.getUserGroups());
-    setProjects(StorageService.getProjects());
-    setLogs(StorageService.getAuditLogs());
-    setSettings(StorageService.getSystemSettings());
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+        const [u, g, p, l, s] = await Promise.all([
+            StorageService.getAllUsers(),
+            StorageService.getUserGroups(),
+            StorageService.getProjects(),
+            StorageService.getAuditLogs(),
+            StorageService.getSystemSettings()
+        ]);
+        setUsers(u); setGroups(g); setProjects(p); setLogs(l); setSettings(s);
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   // --- Handlers ---
@@ -55,9 +66,8 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
                       projectId: projects.length > 0 ? projects[0].id : 'default' // Default to first project
                   }));
                   onImportSentences(formatted);
-                  StorageService.logAuditAction(currentUser!, 'IMPORT_DATA', `Imported ${formatted.length} sentences`);
-                  alert(`Successfully imported ${formatted.length} sentences.`);
-                  loadData();
+                  if (currentUser) StorageService.logAuditAction(currentUser, 'IMPORT_DATA', `Imported ${formatted.length} sentences`);
+                  alert(`Importing ${formatted.length} sentences... This may take a moment.`);
               } catch (err) {
                   alert('Invalid JSON format');
               }
@@ -66,46 +76,44 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
       }
   };
 
-  const saveSettings = () => { 
-      StorageService.saveSystemSettings(settings); 
-      StorageService.logAuditAction(currentUser!, 'UPDATE_SETTINGS', 'Updated system settings');
+  const saveSettings = async () => { 
+      await StorageService.saveSystemSettings(settings); 
+      if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_SETTINGS', 'Updated system settings');
       alert('Saved'); 
   };
 
-  const handleSaveGroup = () => {
+  const handleSaveGroup = async () => {
       if (editingGroup) {
-          StorageService.saveUserGroup(editingGroup);
-          StorageService.logAuditAction(currentUser!, 'UPDATE_GROUP', `Updated group: ${editingGroup.name}`);
+          await StorageService.saveUserGroup(editingGroup);
+          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_GROUP', `Updated group: ${editingGroup.name}`);
           setIsGroupModalOpen(false);
           loadData();
       }
   };
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
       if (editingProject) {
-          StorageService.saveProject(editingProject);
-          StorageService.logAuditAction(currentUser!, 'UPDATE_PROJECT', `Updated project: ${editingProject.name}`);
+          await StorageService.saveProject(editingProject);
+          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_PROJECT', `Updated project: ${editingProject.name}`);
           setIsProjectModalOpen(false);
           loadData();
       }
   };
 
-  const handleUpdateUserGroups = () => {
+  const handleUpdateUserGroups = async () => {
       if (editingUser) {
-          StorageService.updateUser(editingUser);
-          StorageService.logAuditAction(currentUser!, 'UPDATE_USER_GROUPS', `Updated groups for user: ${editingUser.email}`);
+          await StorageService.updateUser(editingUser);
+          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_USER_GROUPS', `Updated groups for user: ${editingUser.email}`);
           setIsUserModalOpen(false);
           loadData();
       }
   };
 
-  const handlePasswordReset = () => {
+  const handlePasswordReset = async () => {
       if (resetPasswordUserId && newPassword) {
-          StorageService.adminSetUserPassword(resetPasswordUserId, newPassword);
-          StorageService.logAuditAction(currentUser!, 'RESET_PASSWORD', `Reset password for user ID: ${resetPasswordUserId}`);
+          await StorageService.adminSetUserPassword(resetPasswordUserId, newPassword);
           setResetPasswordUserId(null);
           setNewPassword('');
-          alert('Password updated');
       }
   };
 
@@ -143,6 +151,8 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
        </aside>
        
        <main className="flex-1 p-8 overflow-y-auto">
+          {isLoading && <div className="mb-4 text-brand-600">Syncing data...</div>}
+          
           {/* USERS TAB */}
           {tab === 'users' && (
               <div>
@@ -274,13 +284,13 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
                          a.href = url;
                          a.download = `va_vanagi_export_${Date.now()}.json`;
                          a.click();
-                         StorageService.logAuditAction(currentUser!, 'EXPORT_DATA', 'Exported full dataset');
+                         if(currentUser) StorageService.logAuditAction(currentUser, 'EXPORT_DATA', 'Exported full dataset');
                      }}>Download JSON</Button>
                  </Card>
                  <Card className="border-red-200 bg-red-50">
                      <h3 className="font-bold text-red-700 mb-2">Danger Zone</h3>
-                     <p className="text-sm text-red-600 mb-4">This will permanently delete all local data.</p>
-                     <Button variant="danger" onClick={() => { if(confirm('Are you sure?')) { onClearAll(); StorageService.logAuditAction(currentUser!, 'WIPE_DATA', 'Cleared all application data'); } }}>Factory Reset App</Button>
+                     <p className="text-sm text-red-600 mb-4">Clear All is disabled in Cloud Mode.</p>
+                     <Button variant="danger" disabled>Factory Reset App</Button>
                  </Card>
               </div>
           )}

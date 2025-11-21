@@ -1,27 +1,11 @@
 import { Sentence, Translation, User, Language, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
-
-const STORAGE_KEYS = {
-  SENTENCES: 'bilum_sentences',
-  TRANSLATIONS: 'bilum_translations',
-  CURRENT_USER: 'bilum_current_user_session',
-  TARGET_LANG: 'bilum_target_lang',
-  USERS: 'bilum_users_db',
-  WORDS: 'bilum_words',
-  WORD_TRANSLATIONS: 'bilum_word_translations',
-  ANNOUNCEMENTS: 'bilum_announcements',
-  FORUM_TOPICS: 'bilum_forum_topics',
-  PROJECTS: 'bilum_projects',
-  USER_GROUPS: 'bilum_user_groups',
-  AUDIT_LOGS: 'bilum_audit_logs',
-  SYSTEM_SETTINGS: 'bilum_system_settings'
-};
-
-interface StoredUser extends User {
-    password?: string;
-    isVerified?: boolean;
-    verificationToken?: string;
-    resetToken?: string;
-}
+import { db, auth } from './firebaseConfig';
+import { 
+  collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, limit, writeBatch, getDoc 
+} from 'firebase/firestore';
+import { 
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User as FirebaseUser 
+} from 'firebase/auth';
 
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
@@ -38,59 +22,72 @@ export const ALL_PERMISSIONS: Permission[] = [
     'dictionary.manage', 'data.import', 'data.export', 'audit.view', 'community.manage', 'system.manage'
 ];
 
+// Helper to convert firestore snapshot to array
+const mapDocs = <T>(snapshot: any): T[] => snapshot.docs.map((d: any) => ({ ...d.data(), id: d.id }));
+
 export const StorageService = {
-  getSentences: (): Sentence[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.SENTENCES) || '[]'),
-  saveSentences: (sentences: Sentence[]) => localStorage.setItem(STORAGE_KEYS.SENTENCES, JSON.stringify(sentences)),
-  
-  getTranslations: (): Translation[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSLATIONS) || '[]'),
-  saveTranslation: (translation: Translation) => {
-    const list = StorageService.getTranslations();
-    const idx = list.findIndex(t => t.id === translation.id);
-    if (idx >= 0) list[idx] = translation; else list.push(translation);
-    localStorage.setItem(STORAGE_KEYS.TRANSLATIONS, JSON.stringify(list));
+  // --- SENTENCES ---
+  getSentences: async (): Promise<Sentence[]> => {
+    const snap = await getDocs(collection(db, 'sentences'));
+    return snap.docs.map(d => d.data() as Sentence); // ID is usually inside data for sentences imported from JSON
   },
-  deleteTranslation: (id: string) => {
-      const list = StorageService.getTranslations().filter(t => t.id !== id);
-      localStorage.setItem(STORAGE_KEYS.TRANSLATIONS, JSON.stringify(list));
-  },
-
-  getTargetLanguage: (): Language => JSON.parse(localStorage.getItem(STORAGE_KEYS.TARGET_LANG) || '{"code":"hula","name":"Hula"}'),
-  setTargetLanguage: (lang: Language) => localStorage.setItem(STORAGE_KEYS.TARGET_LANG, JSON.stringify(lang)),
-
-  getProjects: (): Project[] => {
-      const data = localStorage.getItem(STORAGE_KEYS.PROJECTS);
-      if (!data) return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
-      return JSON.parse(data);
-  },
-  saveProject: (project: Project) => {
-      const list = StorageService.getProjects();
-      const idx = list.findIndex(p => p.id === project.id);
-      if (idx >= 0) list[idx] = project; else list.push(project);
-      localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(list));
+  saveSentences: async (sentences: Sentence[]) => {
+    const batch = writeBatch(db);
+    sentences.forEach(s => {
+        // Use stringified ID as doc ID to prevent duplicates
+        const ref = doc(db, 'sentences', s.id.toString());
+        batch.set(ref, s);
+    });
+    await batch.commit();
   },
 
-  getUserGroups: (): UserGroup[] => {
-      const data = localStorage.getItem(STORAGE_KEYS.USER_GROUPS);
-      if (!data) return [
+  // --- TRANSLATIONS ---
+  getTranslations: async (): Promise<Translation[]> => {
+    const snap = await getDocs(collection(db, 'translations'));
+    return mapDocs<Translation>(snap);
+  },
+  saveTranslation: async (translation: Translation) => {
+    await setDoc(doc(db, 'translations', translation.id), translation);
+  },
+  deleteTranslation: async (id: string) => {
+    await deleteDoc(doc(db, 'translations', id));
+  },
+
+  // --- PROJECTS ---
+  getProjects: async (): Promise<Project[]> => {
+      const snap = await getDocs(collection(db, 'projects'));
+      const projects = mapDocs<Project>(snap);
+      if (projects.length === 0) {
+          // Return default if empty
+          return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
+      }
+      return projects;
+  },
+  saveProject: async (project: Project) => {
+      await setDoc(doc(db, 'projects', project.id), project);
+  },
+
+  // --- USER GROUPS ---
+  getUserGroups: async (): Promise<UserGroup[]> => {
+      const snap = await getDocs(collection(db, 'user_groups'));
+      const groups = mapDocs<UserGroup>(snap);
+      if (groups.length === 0) {
+          // Default groups if DB is fresh
+          return [
               { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
               { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
               { id: 'g-trans', name: 'Translators', permissions: ['translation.create'], description: 'Contributors' }
           ];
-      return JSON.parse(data);
+      }
+      return groups;
   },
-  saveUserGroup: (group: UserGroup) => {
-      const list = StorageService.getUserGroups();
-      const idx = list.findIndex(g => g.id === group.id);
-      if (idx >= 0) list[idx] = group; else list.push(group);
-      localStorage.setItem(STORAGE_KEYS.USER_GROUPS, JSON.stringify(list));
-  },
-  deleteUserGroup: (id: string) => {
-      const list = StorageService.getUserGroups().filter(g => g.id !== id);
-      localStorage.setItem(STORAGE_KEYS.USER_GROUPS, JSON.stringify(list));
+  saveUserGroup: async (group: UserGroup) => {
+      await setDoc(doc(db, 'user_groups', group.id), group);
   },
 
-  calculateEffectivePermissions: (user: User): Permission[] => {
-      const groups = StorageService.getUserGroups();
+  // --- PERMISSIONS ---
+  calculateEffectivePermissions: async (user: User): Promise<Permission[]> => {
+      const groups = await StorageService.getUserGroups();
       const rolePerms = ROLE_BASE_PERMISSIONS[user.role] || [];
       let groupPerms: Permission[] = [];
       user.groupIds?.forEach(gid => {
@@ -99,121 +96,169 @@ export const StorageService = {
       });
       return Array.from(new Set([...rolePerms, ...groupPerms]));
   },
+  
   hasPermission: (user: User | null, permission: Permission): boolean => {
       if (!user || !user.effectivePermissions) return false;
       return user.effectivePermissions.includes('*') || user.effectivePermissions.includes(permission);
   },
 
-  getAuditLogs: (): AuditLog[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS) || '[]'),
-  logAuditAction: (user: User, action: string, details: string, category: AuditLog['category'] = 'system') => {
-      const logs = StorageService.getAuditLogs();
-      logs.unshift({ id: crypto.randomUUID(), action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category });
-      localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 1000)));
+  // --- AUDIT LOGS ---
+  getAuditLogs: async (): Promise<AuditLog[]> => {
+      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
+      const snap = await getDocs(q);
+      return mapDocs<AuditLog>(snap);
+  },
+  logAuditAction: async (user: User, action: string, details: string, category: AuditLog['category'] = 'system') => {
+      await addDoc(collection(db, 'audit_logs'), {
+          action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category
+      });
   },
 
-  getWords: (): Word[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.WORDS) || '[]'),
-  saveWord: (word: Word) => {
-      const list = StorageService.getWords();
-      const idx = list.findIndex(w => w.normalizedText === word.normalizedText);
-      if (idx >= 0) list[idx] = word; else list.push(word);
-      localStorage.setItem(STORAGE_KEYS.WORDS, JSON.stringify(list));
+  // --- DICTIONARY ---
+  getWords: async (): Promise<Word[]> => {
+      const snap = await getDocs(collection(db, 'words'));
+      return mapDocs<Word>(snap);
   },
-  getWordTranslations: (): WordTranslation[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.WORD_TRANSLATIONS) || '[]'),
-  saveWordTranslation: (wt: WordTranslation) => {
-      const list = StorageService.getWordTranslations();
-      const idx = list.findIndex(w => w.id === wt.id);
-      if (idx >= 0) list[idx] = wt; else list.push(wt);
-      localStorage.setItem(STORAGE_KEYS.WORD_TRANSLATIONS, JSON.stringify(list));
+  saveWord: async (word: Word) => {
+      await setDoc(doc(db, 'words', word.id), word);
   },
-
-  getAnnouncements: (): Announcement[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS) || '[]'),
-  saveAnnouncement: (a: Announcement) => {
-      const list = StorageService.getAnnouncements();
-      list.unshift(a);
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(list));
+  getWordTranslations: async (): Promise<WordTranslation[]> => {
+      const snap = await getDocs(collection(db, 'word_translations'));
+      return mapDocs<WordTranslation>(snap);
   },
-  getForumTopics: (): ForumTopic[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.FORUM_TOPICS) || '[]'),
-  saveForumTopic: (t: ForumTopic) => {
-      const list = StorageService.getForumTopics();
-      const idx = list.findIndex(x => x.id === t.id);
-      if (idx >= 0) list[idx] = t; else list.unshift(t);
-      localStorage.setItem(STORAGE_KEYS.FORUM_TOPICS, JSON.stringify(list));
+  saveWordTranslation: async (wt: WordTranslation) => {
+      await setDoc(doc(db, 'word_translations', wt.id), wt);
   },
 
-  getSystemSettings: (): SystemSettings => JSON.parse(localStorage.getItem(STORAGE_KEYS.SYSTEM_SETTINGS) || '{"geminiApiKey":"","showDemoBanner":true,"maintenanceMode":false}'),
-  saveSystemSettings: (s: SystemSettings) => localStorage.setItem(STORAGE_KEYS.SYSTEM_SETTINGS, JSON.stringify(s)),
+  // --- COMMUNITY ---
+  getAnnouncements: async (): Promise<Announcement[]> => {
+      const q = query(collection(db, 'announcements'), orderBy('date', 'desc'));
+      const snap = await getDocs(q);
+      return mapDocs<Announcement>(snap);
+  },
+  saveAnnouncement: async (a: Announcement) => {
+      await setDoc(doc(db, 'announcements', a.id), a);
+  },
+  getForumTopics: async (): Promise<ForumTopic[]> => {
+      const q = query(collection(db, 'forum_topics'), orderBy('date', 'desc'));
+      const snap = await getDocs(q);
+      return mapDocs<ForumTopic>(snap);
+  },
+  saveForumTopic: async (t: ForumTopic) => {
+      await setDoc(doc(db, 'forum_topics', t.id), t);
+  },
+
+  // --- SETTINGS ---
+  getSystemSettings: async (): Promise<SystemSettings> => {
+      const docRef = doc(db, 'system_settings', 'global');
+      const snap = await getDoc(docRef);
+      if (snap.exists()) return snap.data() as SystemSettings;
+      return { geminiApiKey: "", showDemoBanner: true, maintenanceMode: false };
+  },
+  saveSystemSettings: async (s: SystemSettings) => {
+      await setDoc(doc(db, 'system_settings', 'global'), s);
+  },
+
+  // --- USERS & AUTH ---
+  getAllUsers: async (): Promise<User[]> => {
+      const snap = await getDocs(collection(db, 'users'));
+      return mapDocs<User>(snap);
+  },
   
-  clearAll: () => localStorage.clear(),
-
-  // Auth
-  getStoredUsers: (): StoredUser[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]'),
-  saveStoredUsers: (u: StoredUser[]) => localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(u)),
-  getAllUsers: (): User[] => StorageService.getStoredUsers().map(u => ({ id: u.id, name: u.name, role: u.role, email: u.email, isActive: u.isActive, groupIds: u.groupIds })),
-  
-  getCurrentUser: (): User | null => JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null'),
-  saveCurrentUser: (u: User) => localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(u)),
-  logout: () => localStorage.removeItem(STORAGE_KEYS.CURRENT_USER),
+  getCurrentUser: (): User | null => {
+      const u = auth.currentUser;
+      if (!u) return null;
+      return {
+          id: u.uid,
+          name: u.displayName || 'User',
+          email: u.email || '',
+          role: 'guest', // Basic role, actual permissions loaded in App
+          isActive: true
+      };
+  },
 
   login: async (email: string, password: string) => {
-      const users = StorageService.getStoredUsers();
-      let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+      try {
+          const userCred = await signInWithEmailAndPassword(auth, email, password);
+          
+          // Check if user exists in 'users' collection, if not (or if super admin), create/update
+          const userDocRef = doc(db, 'users', userCred.user.uid);
+          const userDocSnap = await getDoc(userDocRef);
 
-      // FIRST TIME SETUP ONLY: If the Super Admin doesn't exist in DB yet, create them.
-      // But if they DO exist, we trust the DB password, allowing changes.
-      if (!user && email.toLowerCase() === 'brime.olewale@gmail.com' && password === 'admin') {
-           user = { 
-               id: 'super-admin', 
-               name: 'Brime Olewale', 
-               email: 'brime.olewale@gmail.com', 
-               role: 'admin', 
-               isActive: true, 
-               groupIds: ['g-admin'], 
-               password: 'admin', 
-               isVerified: true 
-           };
-           users.push(user);
-           StorageService.saveStoredUsers(users);
-      }
+          let userData: User;
 
-      // Now check credentials against the DB
-      if (!user || user.password !== password) {
-          return { success: false, message: 'Invalid login' };
+          // SUPER ADMIN CHECK
+          if (email.toLowerCase() === 'brime.olewale@gmail.com') {
+              userData = {
+                  id: userCred.user.uid,
+                  name: 'Brime Olewale',
+                  email: email,
+                  role: 'admin',
+                  isActive: true,
+                  groupIds: ['g-admin'],
+                  effectivePermissions: ['*'] // Temporary calc
+              };
+              await setDoc(userDocRef, userData, { merge: true });
+          } else if (userDocSnap.exists()) {
+              userData = userDocSnap.data() as User;
+          } else {
+              return { success: false, message: 'User profile missing. Please register.' };
+          }
+
+          if (userData.isActive === false) return { success: false, message: 'Account deactivated' };
+
+          return { success: true, user: userData };
+      } catch (e: any) {
+          return { success: false, message: e.message || 'Login failed' };
       }
-      
-      if (!user.isActive) return { success: false, message: 'Account is deactivated' };
-      
-      const session = { ...user, effectivePermissions: StorageService.calculateEffectivePermissions(user) };
-      // Remove password from session object for security
-      const { password: _, ...safeSession } = session as any;
-      
-      StorageService.saveCurrentUser(safeSession);
-      return { success: true, user: safeSession };
   },
+
   register: async (email: string, password: string, name: string) => {
-      const users = StorageService.getStoredUsers();
-      if (users.find(u => u.email === email)) return { success: false, message: 'Email exists' };
-      const newUser = { id: crypto.randomUUID(), name, email, role: 'translator' as const, password, isVerified: false, isActive: true, verificationToken: '123', groupIds: ['g-trans'] };
-      users.push(newUser);
-      StorageService.saveStoredUsers(users);
-      return { success: true, token: '123' };
+      try {
+          const userCred = await createUserWithEmailAndPassword(auth, email, password);
+          const newUser: User = {
+              id: userCred.user.uid,
+              name,
+              email,
+              role: 'translator',
+              isActive: true,
+              groupIds: ['g-trans']
+          };
+          // Create profile in Firestore
+          await setDoc(doc(db, 'users', newUser.id), newUser);
+          return { success: true, token: userCred.user.uid }; // Return UID as verification placeholder
+      } catch (e: any) {
+          return { success: false, message: e.message || 'Registration failed' };
+      }
   },
-  verifyEmail: (token: string) => {
-      const users = StorageService.getStoredUsers();
-      const u = users.find(x => x.verificationToken === token);
-      if (!u) return { success: false, message: 'Invalid' };
-      u.isVerified = true; u.verificationToken = undefined;
-      StorageService.saveStoredUsers(users);
-      return { success: true, message: 'Verified' };
+
+  logout: async () => {
+      await signOut(auth);
   },
-  requestPasswordReset: (_email: string) => ({ success: true, token: '123' }),
-  updateUser: (u: User) => {
-      const users = StorageService.getStoredUsers();
-      const idx = users.findIndex(x => x.id === u.id);
-      if (idx >= 0) { users[idx] = { ...users[idx], ...u }; StorageService.saveStoredUsers(users); }
+
+  verifyEmail: async (token: string) => {
+      // In Firebase Auth, email verification is handled differently (sendEmailVerification).
+      // For this prototype maintaining compatibility with existing EmailJS flow:
+      return { success: true, message: 'Email verified (Simulated)' };
   },
-  adminSetUserPassword: (userId: string, newPass: string) => {
-      const users = StorageService.getStoredUsers();
-      const u = users.find(x => x.id === userId);
-      if (u) { u.password = newPass; StorageService.saveStoredUsers(users); }
+
+  updateUser: async (u: User) => {
+      await updateDoc(doc(db, 'users', u.id), { ...u });
+  },
+
+  adminSetUserPassword: async (userId: string, newPass: string) => {
+      // Firebase Admin SDK is required to change other users' passwords server-side.
+      // Client-side SDK cannot change another user's password directly.
+      // This would require a Cloud Function.
+      console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
+      alert("Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'.");
+  },
+
+  // Helpers for legacy compatibility
+  getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
+  setTargetLanguage: () => {},
+  clearAll: async () => {
+      // Careful with this in cloud!
+      console.warn("Clear All disabled in Cloud Mode for safety");
   }
 };

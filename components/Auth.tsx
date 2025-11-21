@@ -26,7 +26,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
             const res = await StorageService.register(email, password, name);
             if (res.success) {
                 // Attempt to send real email if configured
-                const settings = StorageService.getSystemSettings();
+                const settings = await StorageService.getSystemSettings();
                 if (settings.emailJsServiceId && settings.emailJsTemplateId && settings.emailJsPublicKey) {
                     const templateParams = {
                         to_name: name,
