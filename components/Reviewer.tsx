@@ -27,9 +27,14 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       setIsProcessing(true);
       try {
           await onReviewAction(id, status, feedback);
-      } catch (e) {
-          alert("Action failed. Please try again.");
-          console.error(e);
+      } catch (e: any) {
+          console.error("Review Action Error:", e);
+          // Detect specific Firebase Quota error
+          if (e.code === 'resource-exhausted' || (e.message && e.message.includes('quota'))) {
+              alert("❌ QUOTA EXCEEDED: The database daily write limit has been reached.\n\nBecause you uploaded a large dataset on the Free Plan, you have used all 20,000 daily writes.\n\nPlease upgrade to the Firebase Blaze plan (Pay-as-you-go) or wait 24 hours for the quota to reset.");
+          } else {
+              alert(`Action failed: ${e.message || "Unknown error. Check console."}`);
+          }
       } finally {
           setIsProcessing(false);
       }
@@ -41,8 +46,12 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       try {
           const res = await validateTranslation(sentence.english, current.text, targetLanguage); 
           await onUpdateTranslation({...current, aiQualityScore: res.score}); 
-      } catch(e) {
-          alert("AI Check failed.");
+      } catch(e: any) {
+          if (e.code === 'resource-exhausted') {
+             alert("Cannot save AI score: Database quota exceeded.");
+          } else {
+             alert("AI Check failed.");
+          }
       } finally {
           setIsProcessing(false);
       }
