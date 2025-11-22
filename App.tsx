@@ -115,8 +115,9 @@ const App: React.FC = () => {
 
   const handleNavigate = (page: string) => setCurrentPage(page);
 
-  // OPTIMIZED: Do not pass massive array to state. Just reload.
-  const handleImportSentences = async () => { 
+  const handleImportSentences = async (newSentences: Sentence[]) => { 
+      // Updated to support batching via StorageService directly or wrapped
+      setSentences(prev => [...prev, ...newSentences]); 
       window.location.reload(); 
   };
   
@@ -201,7 +202,7 @@ const App: React.FC = () => {
       <Header user={user} onNavigate={handleNavigate} onSwitchRole={handleLogout} pendingReviewCount={pendingReviewCount} />
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="space-y-6">
-            {currentPage === 'dashboard' && <Dashboard sentences={sentences} translations={translations} language={targetLanguage} />}
+            {currentPage === 'dashboard' && <Dashboard sentences={sentences} translations={translations} language={targetLanguage} users={allUsers} />}
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
             {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} />}
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} />}

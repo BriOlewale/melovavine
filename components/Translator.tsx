@@ -56,11 +56,20 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
           status: myTranslation?.status || 'pending',
           history: myTranslation?.history || []
       });
+      // Auto-advance on save
       if (index < sentences.length - 1) setIndex(index + 1);
   };
   
   const handleAi = async () => {
       if (sentence) setText(await getTranslationSuggestion(sentence.english, targetLanguage));
+  };
+
+  const handleNext = () => {
+      if (index < sentences.length - 1) setIndex(index + 1);
+  };
+
+  const handlePrev = () => {
+      if (index > 0) setIndex(index - 1);
   };
 
   const getUserName = (id: string) => users.find(u => u.id === id)?.name || 'Unknown';
@@ -69,15 +78,22 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-10">
+       {/* Navigation Header */}
        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-bold">Translating to {targetLanguage.name}</h2>
-          <Button variant="secondary" onClick={() => setIsNavOpen(true)}>Browse Sentences</Button>
+          <div className="flex gap-2">
+              <Button variant="secondary" onClick={handlePrev} disabled={index === 0}>← Prev</Button>
+              <span className="self-center text-gray-500 font-medium text-sm">
+                  {index + 1} / {sentences.length}
+              </span>
+              <Button variant="secondary" onClick={handleNext} disabled={index === sentences.length - 1}>Next →</Button>
+          </div>
+          <Button variant="ghost" onClick={() => setIsNavOpen(true)}>Browse All</Button>
        </div>
 
        {/* Sentence Display */}
-       <Card className="p-6">
-          <div className="text-gray-500 text-sm mb-2">Sentence #{sentence.id}</div>
-          <div className="text-2xl font-medium leading-relaxed">
+       <Card className="p-6 border-t-4 border-t-brand-500">
+          <div className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Translate to {targetLanguage.name}</div>
+          <div className="text-2xl font-medium leading-relaxed text-gray-900">
              {sentence.english.split(' ').map((w, i) => (
                 <span key={i} onClick={() => setSelectedWord({t: w, n: w.toLowerCase().replace(/[^a-z]/g, '')})} className="cursor-pointer hover:text-brand-600 hover:bg-brand-50 rounded px-0.5 transition-colors">
                    {w}{' '}
@@ -88,9 +104,8 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
 
        {/* Community Translations */}
        <div className="space-y-4">
-         <h3 className="font-bold text-gray-700">Community Translations ({communityTranslations.length})</h3>
-         {communityTranslations.length === 0 && (
-           <div className="text-gray-500 text-sm italic">No other translations yet. Be the first!</div>
+         {communityTranslations.length > 0 && (
+             <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide mt-6">Community Contributions</h3>
          )}
          {communityTranslations.map(t => {
             const voteStatus = t.voteHistory?.[user.id];
@@ -100,7 +115,7 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                     <div>
                        <div className="text-lg text-gray-900 mb-1">{t.text}</div>
                        <div className="text-xs text-gray-500 flex items-center gap-2">
-                          <span>by {getUserName(t.translatorId)}</span>
+                          <span className="font-medium">{getUserName(t.translatorId)}</span>
                           <span>•</span>
                           <span>{new Date(t.timestamp).toLocaleDateString()}</span>
                           {t.status === 'approved' && <Badge color="green">Approved</Badge>}
@@ -130,8 +145,8 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                      {t.comments && t.comments.length > 0 && (
                          <div className="space-y-1 mb-2">
                              {t.comments.map(c => (
-                                 <div key={c.id} className="text-xs bg-white p-1 rounded border">
-                                     <span className="font-bold">{c.userName}:</span> {c.text}
+                                 <div key={c.id} className="text-xs bg-white p-1 rounded border text-gray-600">
+                                     <span className="font-bold text-gray-800">{c.userName}:</span> {c.text}
                                  </div>
                              ))}
                          </div>
@@ -139,7 +154,7 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                      <div className="flex gap-2">
                          <input 
                             type="text" 
-                            placeholder="Add a comment..." 
+                            placeholder="Discuss translation..." 
                             className="flex-1 text-xs border rounded px-2 py-1 focus:ring-1 focus:ring-brand-500 focus:outline-none"
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -148,8 +163,8 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                                 }
                             }}
                          />
-                         <button className="text-xs text-brand-600 hover:underline" onClick={() => setHistoryModalTranslation(t)}>
-                            History
+                         <button className="text-xs text-brand-600 hover:underline whitespace-nowrap" onClick={() => setHistoryModalTranslation(t)}>
+                            View History
                          </button>
                      </div>
                  </div>
@@ -159,26 +174,32 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
        </div>
 
        {/* My Translation Input */}
-       <div className="space-y-3">
-         <h3 className="font-bold text-gray-700">Your Contribution</h3>
-         <Card className="border-brand-200 ring-1 ring-brand-100">
+       <div className="space-y-3 pt-4">
+         <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide">Your Translation</h3>
+         <Card className={`border-2 transition-shadow ${text ? 'border-brand-200 shadow-md' : 'border-gray-200'}`}>
             <textarea 
-              className="w-full border-0 focus:ring-0 p-0 resize-none text-lg mb-4 placeholder-gray-300" 
+              className="w-full border-0 focus:ring-0 p-0 resize-none text-xl mb-4 placeholder-gray-300 min-h-[80px]" 
               rows={3} 
-              placeholder="Type your translation here..." 
+              placeholder="Type Hula translation here..." 
               value={text} 
               onChange={e => setText(e.target.value)} 
             />
-            <div className="flex justify-between items-center border-t pt-4">
-               <Button variant="ghost" onClick={handleAi} className="text-brand-600">✨ AI Suggestion</Button>
-               <div className="flex gap-2">
-                 {myTranslation && <span className="text-xs text-gray-400 self-center mr-2">Status: {myTranslation.status}</span>}
-                 <Button onClick={handleSave}>
-                    {myTranslation ? 'Update' : 'Submit'} Translation
+            <div className="flex justify-between items-center border-t border-gray-100 pt-4">
+               <Button variant="ghost" onClick={handleAi} className="text-brand-600 text-xs">✨ AI Suggestion</Button>
+               <div className="flex gap-2 items-center">
+                 {myTranslation && <span className="text-xs text-gray-400 mr-2 uppercase font-bold tracking-wider">{myTranslation.status}</span>}
+                 <Button onClick={handleSave} className="px-6">
+                    {myTranslation ? 'Update' : 'Submit'}
                  </Button>
                </div>
             </div>
          </Card>
+       </div>
+
+       {/* Bottom Navigation for ease of use */}
+       <div className="flex justify-between pt-6 border-t border-gray-200 mt-8">
+            <Button variant="ghost" onClick={handlePrev} disabled={index === 0}>← Previous Sentence</Button>
+            <Button variant="ghost" onClick={handleNext} disabled={index === sentences.length - 1}>Skip / Next →</Button>
        </div>
 
        {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={wordTranslations.filter(wt => wt.wordId === selectedWord.n || wt.wordId === 'temp')} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, sentence.id); setSelectedWord(null); }} />}
