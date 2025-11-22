@@ -12,7 +12,7 @@ export interface TranslationHistoryEntry {
   details?: {
     oldText?: string;
     newText?: string;
-    feedback?: string;
+    feedback?: string | null; // Updated to allow null
   };
 }
 
@@ -37,7 +37,7 @@ export interface Translation {
   status: 'pending' | 'approved' | 'rejected';
   reviewedBy?: string;
   reviewedAt?: number;
-  feedback?: string;
+  feedback?: string | null; // Updated to allow null for DB compatibility
   history?: TranslationHistoryEntry[];
   comments?: Comment[];
   aiQualityScore?: number;
