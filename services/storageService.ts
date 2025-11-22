@@ -28,17 +28,27 @@ const mapDocs = <T>(snapshot: any): T[] => snapshot.docs.map((d: any) => ({ ...d
 export const StorageService = {
   // --- SENTENCES ---
   getSentences: async (): Promise<Sentence[]> => {
-    const snap = await getDocs(collection(db, 'sentences'));
-    return snap.docs.map(d => d.data() as Sentence); // ID is usually inside data for sentences imported from JSON
+    // Warning: Fetching 50k docs at once is heavy. Ideally paginate this in future.
+    // For now, we limit to 1000 on initial load to prevent freezing, 
+    // relying on the Navigator or search to find specific ones if needed.
+    const q = query(collection(db, 'sentences'), limit(2000)); 
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Sentence); 
   },
+  
+  // BATCHED UPLOAD
   saveSentences: async (sentences: Sentence[]) => {
-    const batch = writeBatch(db);
-    sentences.forEach(s => {
-        // Use stringified ID as doc ID to prevent duplicates
-        const ref = doc(db, 'sentences', s.id.toString());
-        batch.set(ref, s);
-    });
-    await batch.commit();
+    const CHUNK_SIZE = 450; // Firestore batch limit is 500
+    for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
+        const chunk = sentences.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(s => {
+            const ref = doc(db, 'sentences', s.id.toString());
+            batch.set(ref, s);
+        });
+        await batch.commit();
+        console.log(`Uploaded batch ${i} to ${i + chunk.length}`);
+    }
   },
 
   // --- TRANSLATIONS ---
@@ -187,7 +197,7 @@ export const StorageService = {
 
           let userData: User;
 
-          // SUPER ADMIN CHECK
+          // SUPER ADMIN CHECK - FORCE UPDATE ON LOGIN
           if (email.toLowerCase() === 'brime.olewale@gmail.com') {
               userData = {
                   id: userCred.user.uid,
@@ -196,8 +206,9 @@ export const StorageService = {
                   role: 'admin',
                   isActive: true,
                   groupIds: ['g-admin'],
-                  effectivePermissions: ['*'] // Temporary calc
+                  effectivePermissions: ['*'] 
               };
+              // Always force update the super admin record to ensure access
               await setDoc(userDocRef, userData, { merge: true });
           } else if (userDocSnap.exists()) {
               userData = userDocSnap.data() as User;
@@ -237,8 +248,6 @@ export const StorageService = {
   },
 
   verifyEmail: async (_token: string) => {
-      // In Firebase Auth, email verification is handled differently (sendEmailVerification).
-      // For this prototype maintaining compatibility with existing EmailJS flow:
       return { success: true, message: 'Email verified (Simulated)' };
   },
 
@@ -247,9 +256,6 @@ export const StorageService = {
   },
 
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
-      // Firebase Admin SDK is required to change other users' passwords server-side.
-      // Client-side SDK cannot change another user's password directly.
-      // This would require a Cloud Function.
       console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
       alert("Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'.");
   },
@@ -258,7 +264,6 @@ export const StorageService = {
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
   clearAll: async () => {
-      // Careful with this in cloud!
       console.warn("Clear All disabled in Cloud Mode for safety");
   }
 };

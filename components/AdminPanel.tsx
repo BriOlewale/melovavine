@@ -56,20 +56,27 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
       const file = e.target.files?.[0];
       if (file) {
           const reader = new FileReader();
-          reader.onload = (ev) => {
+          reader.onload = async (ev) => {
               try {
                   const json = JSON.parse(ev.target?.result as string);
                   // Handle both {id, english} and {id, sentence} formats
                   const formatted = json.map((x: any) => ({ 
                       id: x.id, 
                       english: x.english || x.sentence,
-                      projectId: projects.length > 0 ? projects[0].id : 'default' // Default to first project
+                      projectId: projects.length > 0 ? projects[0].id : 'default' 
                   }));
-                  onImportSentences(formatted);
+                  
+                  alert(`Starting import of ${formatted.length} sentences. This will take a few minutes. Please do not close this tab.`);
+                  
+                  // Call the async batched import
+                  await onImportSentences(formatted);
+                  
                   if (currentUser) StorageService.logAuditAction(currentUser, 'IMPORT_DATA', `Imported ${formatted.length} sentences`);
-                  alert(`Importing ${formatted.length} sentences... This may take a moment.`);
+                  alert(`Success! Imported ${formatted.length} sentences.`);
+                  loadData();
               } catch (err) {
-                  alert('Invalid JSON format');
+                  console.error(err);
+                  alert('Import failed. Check console for details.');
               }
           };
           reader.readAsText(file);
