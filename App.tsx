@@ -149,7 +149,8 @@ const App: React.FC = () => {
       if (translation && user) {
           const historyEntry = { timestamp: Date.now(), action: status, userId: user.id, userName: user.name, details: { feedback } };
           const updated: Translation = { ...translation, status: status, reviewedBy: user.id, reviewedAt: Date.now(), feedback: feedback, history: [...(translation.history || []), historyEntry as any] };
-          handleSaveTranslation(updated);
+          // Await ensuring errors are caught by caller
+          await handleSaveTranslation(updated);
       }
   };
 
