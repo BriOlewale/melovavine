@@ -212,7 +212,8 @@ const App: React.FC = () => {
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
             {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
-            {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} sentences={sentences} translations={translations} onClearAll={handleClearAll} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
+            {/* FIX: Removed extra props 'translations' and 'onClearAll' to match updated component definition */}
+            {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} sentences={sentences} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
         </div>
       </main>
     </div>

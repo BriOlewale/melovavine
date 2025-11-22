@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sentence, Translation, User, UserGroup, Project, AuditLog, Permission } from '../types';
+import { Sentence, User, UserGroup, Project, AuditLog, Permission } from '../types';
 import { Button, Card, Input, Modal, Badge } from './UI';
 import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
 
@@ -348,7 +348,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sent
               </div>
           )}
 
-          {/* SETTINGS TAB */}
           {tab === 'settings' && (
               <div className="max-w-xl space-y-6">
                  <h2 className="text-2xl font-bold">System Settings</h2>
