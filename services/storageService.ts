@@ -47,8 +47,8 @@ export const StorageService = {
         });
         await batch.commit();
         if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
-        // Small delay to prevent rate limiting
-        await new Promise(r => setTimeout(r, 100));
+        // Slightly longer delay to ensure connection stability
+        await new Promise(r => setTimeout(r, 200));
     }
   },
 

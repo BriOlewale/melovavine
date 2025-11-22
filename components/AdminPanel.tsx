@@ -3,6 +3,7 @@ import { User, UserGroup, Project, AuditLog, Permission } from '../types';
 import { Button, Card, Input, Modal, Badge } from './UI';
 import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
 
+// Removed 'sentences' from Props because it wasn't being used
 export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImportSentences }) => {
   const [tab, setTab] = useState('users');
   const [isLoading, setIsLoading] = useState(false);
@@ -78,12 +79,12 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                       setImportStatus(`Imported ${count} / ${formatted.length} sentences...`);
                   });
 
-                  // Then calling the prop to notify parent (App.tsx) to reload/update state
-                  await onImportSentences(formatted);
+                  // Notify parent to reload - NO DATA PASSED BACK
+                  await onImportSentences();
                   
                   if (currentUser) StorageService.logAuditAction(currentUser, 'IMPORT_DATA', `Imported ${formatted.length} sentences`);
                   setImportStatus(`Success! Imported ${formatted.length} sentences.`);
-                  alert('Import Complete!');
+                  alert('Import Complete! The page will now reload.');
                   setImportStatus('');
               } catch (err: any) {
                   console.error(err);
