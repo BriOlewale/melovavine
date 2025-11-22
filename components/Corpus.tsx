@@ -158,7 +158,7 @@ export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, 
                                             onChange={e => setCommentText(e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit(t.id)}
                                         />
-                                        <Button size="sm" onClick={() => handleCommentSubmit(t.id)} disabled={!commentText.trim()}>Post</Button>
+                                        <Button onClick={() => handleCommentSubmit(t.id)} disabled={!commentText.trim()}>Post</Button>
                                     </div>
                                 </td>
                             </tr>
