@@ -9,7 +9,7 @@ import { Leaderboard } from './components/Leaderboard';
 import { CommunityHub } from './components/CommunityHub';
 import { Auth } from './components/Auth';
 import { StorageService } from './services/storageService';
-import { Sentence, Translation, User, Language, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
+import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
 import { auth } from './services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -55,6 +55,20 @@ const App: React.FC = () => {
               setIsLoading(false);
           }
       };
+
+      // Check for verification token in URL
+      const params = new URLSearchParams(window.location.search);
+      const verifyToken = params.get('verify');
+      if (verifyToken) {
+          StorageService.verifyEmail(verifyToken).then(res => {
+              if (res.success) {
+                  alert("Email verified successfully! You can now log in.");
+                  window.history.replaceState({}, document.title, window.location.pathname);
+              } else {
+                  alert("Verification failed.");
+              }
+          });
+      }
 
       // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {

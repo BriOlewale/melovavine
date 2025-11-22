@@ -1,10 +1,10 @@
-import { Sentence, Translation, User, Language, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
+import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
-  collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, limit, writeBatch, getDoc 
+  collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc 
 } from 'firebase/firestore';
 import { 
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User as FirebaseUser 
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
 } from 'firebase/auth';
 
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
@@ -236,7 +236,7 @@ export const StorageService = {
       await signOut(auth);
   },
 
-  verifyEmail: async (token: string) => {
+  verifyEmail: async (_token: string) => {
       // In Firebase Auth, email verification is handled differently (sendEmailVerification).
       // For this prototype maintaining compatibility with existing EmailJS flow:
       return { success: true, message: 'Email verified (Simulated)' };
@@ -246,7 +246,7 @@ export const StorageService = {
       await updateDoc(doc(db, 'users', u.id), { ...u });
   },
 
-  adminSetUserPassword: async (userId: string, newPass: string) => {
+  adminSetUserPassword: async (_userId: string, _newPass: string) => {
       // Firebase Admin SDK is required to change other users' passwords server-side.
       // Client-side SDK cannot change another user's password directly.
       // This would require a Cloud Function.

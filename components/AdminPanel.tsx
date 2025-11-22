@@ -3,7 +3,7 @@ import { Sentence, Translation, User, UserGroup, Project, AuditLog, Permission }
 import { Button, Card, Input, Modal, Badge } from './UI';
 import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
 
-export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sentence[], translations: Translation[], onClearAll: Function }> = ({ onImportSentences, translations, onClearAll }) => {
+export const AdminPanel: React.FC<{ onImportSentences: Function, sentences: Sentence[], translations: Translation[], onClearAll: Function }> = ({ onImportSentences, translations }) => {
   const [tab, setTab] = useState('users');
   const [isLoading, setIsLoading] = useState(false);
   
