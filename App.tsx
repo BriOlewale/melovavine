@@ -7,6 +7,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { Dictionary } from './components/Dictionary';
 import { Leaderboard } from './components/Leaderboard';
 import { CommunityHub } from './components/CommunityHub';
+import { Corpus } from './components/Corpus';
 import { Auth } from './components/Auth';
 import { StorageService } from './services/storageService';
 import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
@@ -228,6 +229,7 @@ const App: React.FC = () => {
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
             {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} />}
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} />}
+            {currentPage === 'corpus' && <Corpus sentences={sentences} translations={translations} users={allUsers} targetLanguage={targetLanguage} user={user} onVote={handleVote} onAddComment={handleAddComment} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
             {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
             {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}

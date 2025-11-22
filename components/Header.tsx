@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { User } from '../types';
 import { Button } from './UI';
@@ -27,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({ user, onNavigate, onSwitchRole, 
            
            {user?.role !== 'guest' && <button onClick={() => onNavigate('translate')} className="text-sm font-medium text-gray-700 hover:text-brand-600 whitespace-nowrap">Translate</button>}
            
+           <button onClick={() => onNavigate('corpus')} className="text-sm font-medium text-gray-700 hover:text-brand-600 whitespace-nowrap">Browse</button>
            <button onClick={() => onNavigate('dictionary')} className="text-sm font-medium text-gray-700 hover:text-brand-600 whitespace-nowrap">Dictionary</button>
            <button onClick={() => onNavigate('leaderboard')} className="text-sm font-medium text-gray-700 hover:text-brand-600 whitespace-nowrap">Leaderboard</button>
            
