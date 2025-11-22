@@ -12,7 +12,7 @@ import { StorageService } from './services/storageService';
 import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
 import { auth } from './services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './services/firebaseConfig';
 
 const App: React.FC = () => {
@@ -28,7 +28,7 @@ const App: React.FC = () => {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [forumTopics, setForumTopics] = useState<ForumTopic[]>([]);
-  const [showDemoBanner, setShowDemoBanner] = useState(false); // Default false for cloud
+  const [showDemoBanner, setShowDemoBanner] = useState(false); 
 
   const targetLanguage = PNG_LANGUAGES[0];
 
@@ -76,11 +76,25 @@ const App: React.FC = () => {
               // Fetch detailed profile
               const docRef = doc(db, 'users', firebaseUser.uid);
               const snap = await getDoc(docRef);
+              
               if (snap.exists()) {
-                  const userData = snap.data() as User;
+                  let userData = snap.data() as User;
+                  
+                  // SELF-HEALING: Force Super Admin logic if missing
+                  if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
+                      console.log("Self-healing: Promoting Brime to Admin...");
+                      userData = {
+                          ...userData,
+                          role: 'admin',
+                          groupIds: ['g-admin']
+                      };
+                      await setDoc(docRef, userData, { merge: true });
+                      alert("System recognized Super Admin. Access updated.");
+                  }
+
                   userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
                   setUser(userData);
-                  init(); // Load data after auth
+                  init(); 
               } else {
                   // Handle case where auth exists but profile doesn't (rare)
                   setUser(null);
@@ -103,8 +117,8 @@ const App: React.FC = () => {
 
   const handleImportSentences = async (newSentences: Sentence[]) => { 
       await StorageService.saveSentences(newSentences); 
-      setSentences(prev => [...prev, ...newSentences]); // Optimistic append or reload
-      window.location.reload(); // Force reload to ensure clean state with large imports
+      setSentences(prev => [...prev, ...newSentences]); 
+      window.location.reload(); 
   };
   
   const handleSaveTranslation = async (translation: Translation) => {
