@@ -116,7 +116,7 @@ const App: React.FC = () => {
   const handleNavigate = (page: string) => setCurrentPage(page);
 
   const handleImportSentences = async (newSentences: Sentence[]) => { 
-      await StorageService.saveSentences(newSentences); 
+      // Updated to support batching via StorageService directly or wrapped
       setSentences(prev => [...prev, ...newSentences]); 
       window.location.reload(); 
   };
@@ -182,10 +182,6 @@ const App: React.FC = () => {
   const handleAddTopic = async (t: string, c: string, cat: ForumTopic['category']) => { if(!user) return; const top: ForumTopic = { id: crypto.randomUUID(), title: t, content: c, authorId: user.id, authorName: user.name, date: Date.now(), replies: [], category: cat }; await StorageService.saveForumTopic(top); setForumTopics(p => [top, ...p]); };
   const handleReplyToTopic = async (tid: string, c: string) => { if(!user) return; const topic = forumTopics.find(t => t.id === tid); if(!topic) return; const rep = { id: crypto.randomUUID(), content: c, authorId: user.id, authorName: user.name, date: Date.now() }; const up = { ...topic, replies: [...topic.replies, rep] }; await StorageService.saveForumTopic(up); setForumTopics(p => p.map(x => x.id === tid ? up : x)); };
 
-  const handleClearAll = () => {
-      alert("Factory reset is disabled in Cloud Mode.");
-  };
-  
   const handleLogin = (loggedInUser: User) => { setUser(loggedInUser); };
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
 
@@ -212,7 +208,6 @@ const App: React.FC = () => {
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
             {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
-            {/* FIX: Removed extra props to prevent TS error */}
             {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
         </div>
       </main>

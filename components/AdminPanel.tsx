@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Sentence, User, UserGroup, Project, AuditLog, Permission } from '../types';
+import { User, UserGroup, Project, AuditLog, Permission } from '../types';
 import { Button, Card, Input, Modal, Badge } from './UI';
 import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
 
-// Removed 'sentences' as it is not used in this component
 export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImportSentences }) => {
   const [tab, setTab] = useState('users');
   const [isLoading, setIsLoading] = useState(false);
@@ -74,15 +73,18 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
 
                   setImportStatus(`Preparing to import ${formatted.length} sentences...`);
                   
+                  // Using StorageService for the heavy lifting and progress
                   await StorageService.saveSentences(formatted, (count) => {
                       setImportStatus(`Imported ${count} / ${formatted.length} sentences...`);
                   });
+
+                  // Then calling the prop to notify parent (App.tsx) to reload/update state
+                  await onImportSentences(formatted);
                   
                   if (currentUser) StorageService.logAuditAction(currentUser, 'IMPORT_DATA', `Imported ${formatted.length} sentences`);
                   setImportStatus(`Success! Imported ${formatted.length} sentences.`);
                   alert('Import Complete!');
                   setImportStatus('');
-                  window.location.reload();
               } catch (err: any) {
                   console.error(err);
                   setImportStatus('Error: ' + err.message);
@@ -143,6 +145,8 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
       setEditingGroup({ ...editingGroup, permissions: newPerms });
   };
 
+  // --- UI Components ---
+
   const NavButton = ({ id, label }: { id: string, label: string }) => (
       <button 
           className={`block w-full text-left p-3 rounded mb-1 ${tab === id ? 'bg-brand-50 text-brand-700 font-medium' : 'hover:bg-gray-100 text-gray-600'}`} 
@@ -168,6 +172,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
        <main className="flex-1 p-8 overflow-y-auto">
           {isLoading && <div className="mb-4 text-brand-600">Syncing data...</div>}
           
+          {/* USERS TAB */}
           {tab === 'users' && (
               <div>
                  <div className="flex justify-between items-center mb-6">
@@ -215,6 +220,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               </div>
           )}
 
+          {/* GROUPS TAB */}
           {tab === 'groups' && (
               <div>
                  <div className="flex justify-between items-center mb-6">
@@ -244,6 +250,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               </div>
           )}
 
+          {/* PROJECTS TAB */}
           {tab === 'projects' && (
               <div>
                  <div className="flex justify-between items-center mb-6">
@@ -277,6 +284,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               </div>
           )}
 
+          {/* DATA TAB */}
           {tab === 'data' && (
               <div className="max-w-2xl">
                  <h2 className="text-2xl font-bold mb-6">Data Management</h2>
@@ -303,6 +311,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               </div>
           )}
 
+          {/* AUDIT LOGS TAB */}
           {tab === 'logs' && (
               <div>
                  <h2 className="text-2xl font-bold mb-6">Audit Logs</h2>
