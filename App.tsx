@@ -147,10 +147,31 @@ const App: React.FC = () => {
   const handleReviewAction = async (translationId: string, status: 'approved' | 'rejected', feedback?: string) => {
       const translation = translations.find(t => t.id === translationId);
       if (translation && user) {
-          const historyEntry = { timestamp: Date.now(), action: status, userId: user.id, userName: user.name, details: { feedback } };
-          const updated: Translation = { ...translation, status: status, reviewedBy: user.id, reviewedAt: Date.now(), feedback: feedback, history: [...(translation.history || []), historyEntry as any] };
-          // Await ensuring errors are caught by caller
-          await handleSaveTranslation(updated);
+          try {
+              // FIX: Firestore cannot store 'undefined'. Ensure we use null or a string.
+              const safeFeedback = feedback || null;
+
+              const historyEntry = { 
+                  timestamp: Date.now(), 
+                  action: status, 
+                  userId: user.id, 
+                  userName: user.name, 
+                  details: { feedback: safeFeedback } 
+              };
+              const updated: Translation = { 
+                  ...translation, 
+                  status: status, 
+                  reviewedBy: user.id, 
+                  reviewedAt: Date.now(), 
+                  feedback: safeFeedback, 
+                  history: [...(translation.history || []), historyEntry as any] 
+              };
+              // Await ensuring errors are caught by caller
+              await handleSaveTranslation(updated);
+          } catch (error) {
+              console.error("Review Action Failed:", error);
+              throw error; // Re-throw to let the Reviewer component handle the UI alert
+          }
       }
   };
 
