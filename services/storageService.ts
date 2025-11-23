@@ -42,7 +42,7 @@ export const StorageService = {
               sentencesRef, 
               where('status', '==', 'open'),
               orderBy('priorityScore', 'desc'),
-              limit(30) // Fetch more to increase chance of finding valid one
+              limit(100) // Increased to 100 to prevent running out if user skips many
           );
           
           const snap = await getDocs(q);
