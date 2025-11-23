@@ -6,7 +6,7 @@ import { WordDefinitionModal } from './WordDefinitionModal';
 import { StorageService } from '../services/storageService';
 
 interface TranslatorProps {
-  sentences: Sentence[]; 
+  sentences: Sentence[]; // Kept in interface for type compatibility if passed from parent, but removed from destructuring if unused
   translations: Translation[];
   user: User;
   users?: User[];
@@ -19,7 +19,8 @@ interface TranslatorProps {
   onVote: (id: string, type: 'up' | 'down') => void;
 }
 
-export const Translator: React.FC<TranslatorProps> = ({ sentences, translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote }) => {
+// Removed 'sentences' from destructuring since it's not used in this component logic
+export const Translator: React.FC<TranslatorProps> = ({ translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote }) => {
   const [currentTask, setCurrentTask] = useState<Sentence | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState('');
