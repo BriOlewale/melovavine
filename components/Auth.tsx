@@ -16,18 +16,28 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
       setError('');
       setIsLoading(true);
 
+      // Safety Timeout: If backend hangs (e.g. Firestore retry loop), kill spinner after 15s
+      const timeoutId = setTimeout(() => {
+          if (isLoading) {
+              setIsLoading(false);
+              setError("Request timed out. Please check your connection and try again.");
+          }
+      }, 15000);
+
       try {
         if (view === 'login') {
             const res = await StorageService.login(email, password);
+            clearTimeout(timeoutId); // Clear timeout on response
+            
             if (res.success && res.user) {
                 onLogin(res.user);
             } else {
                 setError(res.message || 'Error logging in');
             }
         } else if (view === 'register') {
-            // Registration now sends the Firebase Email and logs out immediately
             const res = await StorageService.register(email, password, name);
-            
+            clearTimeout(timeoutId); // Clear timeout on response
+
             if (res.success) {
                 // Show "Check Inbox" screen
                 setView('sent');
@@ -36,6 +46,8 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
             }
         }
       } catch (err: any) {
+          clearTimeout(timeoutId);
+          console.error("Auth Error:", err);
           setError(err.message || "An unexpected error occurred.");
       } finally {
           setIsLoading(false);
