@@ -29,9 +29,6 @@ const mapDocs = <T>(snapshot: any): T[] => snapshot.docs.map((d: any) => ({ ...d
 export const StorageService = {
   // --- SENTENCES ---
   getSentences: async (): Promise<Sentence[]> => {
-    // Warning: Fetching 50k docs at once is heavy. Ideally paginate this in future.
-    // For now, we limit to 1000 on initial load to prevent freezing, 
-    // relying on the Navigator or search to find specific ones if needed.
     const q = query(collection(db, 'sentences'), limit(2000)); 
     const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as Sentence); 
@@ -51,7 +48,6 @@ export const StorageService = {
         });
         await batch.commit();
         if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
-        // Small delay to prevent rate limiting
         await new Promise(r => setTimeout(r, 200));
     }
   },
@@ -73,7 +69,6 @@ export const StorageService = {
       const snap = await getDocs(collection(db, 'projects'));
       const projects = mapDocs<Project>(snap);
       if (projects.length === 0) {
-          // Return default if empty
           return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
       }
       return projects;
@@ -87,7 +82,6 @@ export const StorageService = {
       const snap = await getDocs(collection(db, 'user_groups'));
       const groups = mapDocs<UserGroup>(snap);
       if (groups.length === 0) {
-          // Default groups if DB is fresh
           return [
               { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
               { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
@@ -196,7 +190,6 @@ export const StorageService = {
       try {
           const userCred = await signInWithEmailAndPassword(auth, email, password);
           
-          // Check if user exists in 'users' collection, if not (or if super admin), create/update
           const userDocRef = doc(db, 'users', userCred.user.uid);
           const userDocSnap = await getDoc(userDocRef);
 
@@ -218,11 +211,9 @@ export const StorageService = {
           } else if (userDocSnap.exists()) {
               userData = userDocSnap.data() as User;
           } else {
-              // Edge case: User exists in Auth but not in Firestore
               return { success: false, message: 'User profile missing. Please contact support.' };
           }
 
-          // --- ENFORCE CHECKS ---
           if (userData.isActive === false) {
               await signOut(auth);
               return { success: false, message: 'Account deactivated by admin.' };
@@ -255,8 +246,9 @@ export const StorageService = {
           };
           // Create profile in Firestore
           await setDoc(doc(db, 'users', newUser.id), newUser);
-          // Sign out immediately so they can't use the app until verified
-          await signOut(auth);
+          
+          // REMOVED: await signOut(auth);  <-- We keep them logged in momentarily to send the email
+          
           return { success: true, token: userCred.user.uid }; 
       } catch (e: any) {
           let msg = 'Registration failed';
@@ -271,7 +263,6 @@ export const StorageService = {
 
   verifyEmail: async (token: string) => {
       try {
-          // Update Firestore user to set isVerified: true
           const userDocRef = doc(db, 'users', token);
           const snap = await getDoc(userDocRef);
           if (snap.exists()) {
@@ -291,9 +282,6 @@ export const StorageService = {
   },
 
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
-      // Firebase Admin SDK is required to change other users' passwords server-side.
-      // Client-side SDK cannot change another user's password directly.
-      // This would require a Cloud Function.
       console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
       alert("Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'.");
   },
@@ -302,7 +290,6 @@ export const StorageService = {
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
   clearAll: async () => {
-      // Careful with this in cloud!
       console.warn("Clear All disabled in Cloud Mode for safety");
   }
 };

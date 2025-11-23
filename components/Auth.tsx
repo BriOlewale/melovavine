@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { StorageService } from '../services/storageService';
 import { Button, Card, Input } from './UI';
@@ -30,7 +29,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                 setError(res.message || 'Error logging in');
             }
         } else if (view === 'register') {
-            // Register creates user in DB with isVerified: false
+            // Register creates user in DB and keeps them logged in temporarily
             const res = await StorageService.register(email, password, name);
             if (res.success) {
                 // Attempt to send real email if configured
@@ -59,14 +58,21 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                     }
                 }
                 
-                // Fallback: Send standard Firebase verification email if EmailJS fails
+                // Fallback: Send standard Firebase verification email if EmailJS fails or wasn't configured
+                // The user is still logged in from register(), so this will work now.
                 if (!emailSent && auth.currentUser) {
-                    // Note: We signed out in register(), so auth.currentUser might be null.
-                    // But if register() failed to sign out for some reason, we try this.
-                    // For robustness, we rely on EmailJS.
+                    try {
+                        await sendEmailVerification(auth.currentUser);
+                        console.log("Sent standard Firebase verification email");
+                    } catch (fbErr) {
+                        console.error("Failed to send Firebase verification", fbErr);
+                    }
                 }
 
-                // Switch to 'sent' view. Do NOT login.
+                // NOW we force sign out so they can't access the app until they verify
+                await StorageService.logout();
+
+                // Switch to 'sent' view
                 setView('sent');
             } else {
                 setError(res.message || 'Registration failed');
