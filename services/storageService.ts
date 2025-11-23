@@ -33,36 +33,59 @@ export const StorageService = {
   // --- SENTENCES (SMART QUEUE) ---
   
   // 1. Get the next best sentence for a specific user
-  // UPDATED: Accepts excludedIds (skipped in this session)
   getSmartQueueTask: async (user: User, excludedIds: number[] = []): Promise<Sentence | null> => {
       try {
           const sentencesRef = collection(db, 'sentences');
-          // Fetch a batch of high priority items
-          const q = query(
+          const now = Date.now();
+
+          // Strategy 1: High Priority Open Tasks
+          // We fetch a LARGE batch (500) to ensure we skip past the ones the user has already done.
+          // This is a trade-off: slightly more read operations (500 reads), but guarantees finding a task.
+          const qPriority = query(
               sentencesRef, 
               where('status', '==', 'open'),
               orderBy('priorityScore', 'desc'),
-              limit(100) // Increased to 100 to prevent running out if user skips many
+              limit(500) 
           );
           
-          const snap = await getDocs(q);
-          const candidates = snap.docs.map(d => d.data() as Sentence);
+          let snap = await getDocs(qPriority);
+          let candidates = snap.docs.map(d => d.data() as Sentence);
 
-          const now = Date.now();
-          
-          const validTask = candidates.find(s => {
-              // Skip if locally excluded
-              if (excludedIds.includes(s.id)) return false;
+          // Helper to find a valid task from a list
+          const findValid = (list: Sentence[]) => {
+              // Randomize list slightly so users don't fight for the exact same top 1
+              const shuffled = list.sort(() => 0.5 - Math.random());
+              
+              return shuffled.find(s => {
+                  // Check local session skip
+                  if (excludedIds.includes(s.id)) return false;
+                  
+                  // Check lock
+                  const isLocked = s.lockedBy && s.lockedBy !== user.id && s.lockedUntil && s.lockedUntil > now;
+                  if (isLocked) return false;
+                  
+                  // Check history (already translated by me?)
+                  if (user.translatedSentenceIds?.includes(s.id)) return false;
+                  
+                  return true;
+              });
+          };
 
-              // Is it locked by someone else?
-              const isLocked = s.lockedBy && s.lockedBy !== user.id && s.lockedUntil && s.lockedUntil > now;
-              if (isLocked) return false;
+          let validTask = findValid(candidates);
 
-              // Did I already translate it?
-              if (user.translatedSentenceIds?.includes(s.id)) return false;
-
-              return true;
-          });
+          // Strategy 2: Fallback - Any Open Tasks (Ignore Priority)
+          // If the top 500 were all done by me, just grab 100 random open ones
+          if (!validTask) {
+              // console.log("Priority queue empty/skipped, trying fallback...");
+              const qFallback = query(
+                  sentencesRef, 
+                  where('status', '==', 'open'),
+                  limit(100) 
+              );
+              snap = await getDocs(qFallback);
+              candidates = snap.docs.map(d => d.data() as Sentence);
+              validTask = findValid(candidates);
+          }
 
           if (!validTask) return null;
 
@@ -78,7 +101,7 @@ export const StorageService = {
       }
   },
 
-  // ... (Rest of file remains exactly as before, just ensuring it compiles) ...
+  // ... (Rest of file remains exactly as before) ...
   lockSentence: async (sentenceId: string, userId: string): Promise<boolean> => {
       try {
           await runTransaction(db, async (transaction) => {
