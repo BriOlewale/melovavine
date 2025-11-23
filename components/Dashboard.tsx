@@ -1,5 +1,5 @@
 import React from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Sentence, Translation, Language, User } from '../types';
 import { Card, Badge, Button } from './UI';
 
@@ -37,16 +37,6 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
   .filter(u => u.total > 0)
   .sort((a, b) => b.approvedCount - a.approvedCount)
   .slice(0, 5);
-
-  const activityData = [
-    { name: 'Mon', count: 12 },
-    { name: 'Tue', count: 19 },
-    { name: 'Wed', count: 3 },
-    { name: 'Thu', count: 5 },
-    { name: 'Fri', count: 2 },
-    { name: 'Sat', count: 0 },
-    { name: 'Sun', count: 0 },
-  ];
 
   return (
     <div className="space-y-6 sm:space-y-8 pb-12">
