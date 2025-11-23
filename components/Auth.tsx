@@ -29,10 +29,8 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                 setError(res.message || 'Error logging in');
             }
         } else if (view === 'register') {
-            // Register creates user in DB and keeps them logged in temporarily
             const res = await StorageService.register(email, password, name);
             if (res.success) {
-                // Attempt to send real email if configured
                 const settings = await StorageService.getSystemSettings();
                 let emailSent = false;
 
@@ -58,8 +56,6 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                     }
                 }
                 
-                // Fallback: Send standard Firebase verification email if EmailJS fails or wasn't configured
-                // The user is still logged in from register(), so this will work now.
                 if (!emailSent && auth.currentUser) {
                     try {
                         await sendEmailVerification(auth.currentUser);
@@ -69,13 +65,11 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                     }
                 }
 
-                // NOW we force sign out so they can't access the app until they verify
                 await StorageService.logout();
-
-                // Switch to 'sent' view
                 setView('sent');
             } else {
-                setError(res.message || 'Registration failed');
+                // SHOW THE ACTUAL ERROR MESSAGE
+                setError(res.message || 'Registration failed. Please try again.');
             }
         }
       } catch (err: any) {
@@ -119,11 +113,11 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
              {view === 'register' && <Input label="Name" value={name} onChange={e => setName(e.target.value)} required />}
              <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
              <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-             {error && <p className="text-red-500 text-sm">{error}</p>}
+             {error && <p className="text-red-500 text-sm bg-red-50 p-2 rounded border border-red-100">{error}</p>}
              <Button type="submit" className="w-full" isLoading={isLoading}>{view === 'login' ? 'Login' : 'Register'}</Button>
           </form>
           <div className="mt-4 text-center">
-             <button onClick={() => setView(view === 'login' ? 'register' : 'login')} className="text-sm text-brand-600 hover:underline">
+             <button onClick={() => { setView(view === 'login' ? 'register' : 'login'); setError(''); }} className="text-sm text-brand-600 hover:underline">
                 {view === 'login' ? 'Need an account? Sign Up' : 'Have an account? Sign In'}
              </button>
           </div>
