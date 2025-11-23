@@ -80,6 +80,7 @@ const App: React.FC = () => {
               if (snap.exists()) {
                   let userData = snap.data() as User;
                   
+                  // Force Admin for specific email
                   if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
                       console.log("Self-healing: Promoting Brime to Admin...");
                       userData = {
@@ -88,6 +89,16 @@ const App: React.FC = () => {
                           groupIds: ['g-admin']
                       };
                       await setDoc(docRef, userData, { merge: true });
+                  }
+
+                  // SECURITY FIX: Enforce Verification Check
+                  // If user is NOT admin AND isVerified is FALSE -> Sign Out immediately.
+                  if (userData.role !== 'admin' && !userData.isVerified) {
+                      console.log('Unverified user in auth state — signing out.');
+                      await StorageService.logout();
+                      setUser(null);
+                      setIsLoading(false);
+                      return;
                   }
 
                   userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
