@@ -22,9 +22,9 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
   const progressPercent = Math.round(((sentences.length - remaining) / sentences.length) * 100) || 0;
 
   const data = [
-    { name: 'Approved', value: approved, color: '#10b981' }, // Emerald-500
-    { name: 'Pending', value: pending, color: '#f59e0b' },   // Amber-500
-    { name: 'Remaining', value: remaining > 0 ? remaining : 0, color: '#f1f5f9' }, // Slate-100
+    { name: 'Approved', value: approved, color: '#10b981' }, 
+    { name: 'Pending', value: pending, color: '#f59e0b' },   
+    { name: 'Remaining', value: remaining > 0 ? remaining : 0, color: '#f1f5f9' }, 
   ];
 
   // Calculate Top Contributors
@@ -38,7 +38,6 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
   .sort((a, b) => b.approvedCount - a.approvedCount)
   .slice(0, 5);
 
-  // Simple activity chart data (mocked for now based on users)
   const activityData = [
     { name: 'Mon', count: 12 },
     { name: 'Tue', count: 19 },
@@ -50,22 +49,22 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
   ];
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-6 sm:space-y-8 pb-12">
        
        {/* HERO SECTION */}
-       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
+       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome back, Team! 👋</h1>
-            <p className="text-slate-500 mt-1">Here's what's happening with the <strong>{language.name}</strong> translation project today.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Welcome back! 👋</h1>
+            <p className="text-slate-500 mt-1 text-sm sm:text-base">Here's what's happening with the <strong>{language.name}</strong> translation project.</p>
           </div>
-          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100">
+          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100 self-start sm:self-auto">
              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
              <span className="text-sm font-medium text-slate-600">System Operational</span>
           </div>
        </div>
 
-       {/* VITAL STATS CARDS */}
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+       {/* VITAL STATS CARDS - Stack on mobile */}
+       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
           <Card className="relative overflow-hidden group">
              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Icons.Book />
@@ -76,7 +75,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                 </div>
                 <div>
                    <p className="text-sm font-medium text-slate-500">Total Sentences</p>
-                   <p className="text-3xl font-bold text-slate-800">{sentences.length.toLocaleString()}</p>
+                   <p className="text-2xl sm:text-3xl font-bold text-slate-800">{sentences.length.toLocaleString()}</p>
                 </div>
              </div>
              <div className="mt-4 w-full bg-slate-100 rounded-full h-1.5">
@@ -93,8 +92,8 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                    <Icons.CheckCircle />
                 </div>
                 <div>
-                   <p className="text-sm font-medium text-slate-500">Approved Translations</p>
-                   <p className="text-3xl font-bold text-slate-800">{approved.toLocaleString()}</p>
+                   <p className="text-sm font-medium text-slate-500">Approved</p>
+                   <p className="text-2xl sm:text-3xl font-bold text-slate-800">{approved.toLocaleString()}</p>
                 </div>
              </div>
              <div className="mt-4 w-full bg-slate-100 rounded-full h-1.5">
@@ -111,8 +110,8 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                    <Icons.Clock />
                 </div>
                 <div>
-                   <p className="text-sm font-medium text-slate-500">Pending Review</p>
-                   <p className="text-3xl font-bold text-slate-800">{pending.toLocaleString()}</p>
+                   <p className="text-sm font-medium text-slate-500">Pending</p>
+                   <p className="text-2xl sm:text-3xl font-bold text-slate-800">{pending.toLocaleString()}</p>
                 </div>
              </div>
              <div className="mt-4 w-full bg-slate-100 rounded-full h-1.5">
@@ -121,17 +120,17 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
           </Card>
        </div>
 
-       {/* MAIN CONTENT GRID */}
-       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+       {/* MAIN CONTENT GRID - Stack on mobile */}
+       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
            
-           {/* LEFT COLUMN (2/3) */}
-           <div className="lg:col-span-2 space-y-8">
+           {/* LEFT COLUMN */}
+           <div className="lg:col-span-2 space-y-6 sm:space-y-8">
                {/* PROJECT HEALTH CHART */}
-               <Card className="h-96 flex flex-col">
+               <Card className="h-80 sm:h-96 flex flex-col">
                    <div className="flex justify-between items-center mb-6">
                        <div>
                            <h3 className="font-bold text-lg text-slate-800">Project Progress</h3>
-                           <p className="text-sm text-slate-500">{progressPercent}% of the dataset has been translated</p>
+                           <p className="text-sm text-slate-500">{progressPercent}% completed</p>
                        </div>
                        <Badge color="blue">Active</Badge>
                    </div>
@@ -142,8 +141,8 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                                 data={data} 
                                 cx="50%" 
                                 cy="50%" 
-                                innerRadius={80} 
-                                outerRadius={110} 
+                                innerRadius={70} 
+                                outerRadius={100} 
                                 paddingAngle={5} 
                                 dataKey="value"
                                 stroke="none"
@@ -158,13 +157,6 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                              <Legend verticalAlign="bottom" height={36} iconType="circle" />
                           </PieChart>
                        </ResponsiveContainer>
-                       {/* Center Text */}
-                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
-                          <div className="text-center">
-                             <p className="text-3xl font-bold text-slate-800">{langTrans.length}</p>
-                             <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Translated</p>
-                          </div>
-                       </div>
                    </div>
                </Card>
 
@@ -177,9 +169,8 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                            </div>
                            <h3 className="text-xl font-bold mb-2">Start Translating</h3>
                            <p className="text-brand-50 text-sm mb-6">Help us reach 100% completion. Every sentence counts!</p>
-                           <Button size="sm" className="bg-white text-brand-600 hover:bg-brand-50 border-none shadow-none">Go to Translator →</Button>
+                           <Button size="sm" className="bg-white text-brand-600 hover:bg-brand-50 border-none shadow-none w-full sm:w-auto">Go to Translator →</Button>
                        </div>
-                       {/* Decorative Circle */}
                        <div className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full bg-white/10"></div>
                    </div>
 
@@ -196,7 +187,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                </div>
            </div>
            
-           {/* RIGHT COLUMN (1/3) */}
+           {/* RIGHT COLUMN */}
            <div className="space-y-8">
                {/* TOP CONTRIBUTORS */}
                <Card className="h-auto">
@@ -230,26 +221,12 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                    ) : (
                        <div className="text-center py-8 text-slate-400">
                            <Icons.Users />
-                           <p className="mt-2 text-sm">No contributions yet. Be the first!</p>
+                           <p className="mt-2 text-sm">No contributions yet.</p>
                        </div>
                    )}
                    
                    <div className="mt-6 pt-4 border-t border-slate-50">
-                       <Button variant="ghost" className="w-full text-sm text-slate-500 hover:text-brand-600">View Full Leaderboard</Button>
-                   </div>
-               </Card>
-
-               {/* ACTIVITY MINI CHART */}
-               <Card>
-                   <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-4">Weekly Activity</h3>
-                   <div className="h-32">
-                       <ResponsiveContainer width="100%" height="100%">
-                           <BarChart data={activityData}>
-                               <XAxis dataKey="name" hide />
-                               <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
-                               <Bar dataKey="count" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                           </BarChart>
-                       </ResponsiveContainer>
+                       <Button variant="ghost" fullWidth className="text-sm text-slate-500 hover:text-brand-600">View Leaderboard</Button>
                    </div>
                </Card>
            </div>
