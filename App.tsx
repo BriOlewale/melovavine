@@ -9,6 +9,7 @@ import { Leaderboard } from './components/Leaderboard';
 import { CommunityHub } from './components/CommunityHub';
 import { Corpus } from './components/Corpus';
 import { Auth } from './components/Auth';
+import { EmailVerifier } from './components/EmailVerifier'; // NEW IMPORT
 import { StorageService } from './services/storageService';
 import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
 import { auth } from './services/firebaseConfig';
@@ -16,12 +17,13 @@ import { auth } from './services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './services/firebaseConfig';
-import { ToastContainer } from './components/UI'; // Import Toast Container
+import { ToastContainer } from './components/UI';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showVerifier, setShowVerifier] = useState(false);
   
   // Data State
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -35,6 +37,14 @@ const App: React.FC = () => {
   const [showDemoBanner, setShowDemoBanner] = useState(false); 
 
   const targetLanguage = PNG_LANGUAGES[0];
+
+  // Check URL for verification param on mount
+  useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('verify')) {
+          setShowVerifier(true);
+      }
+  }, []);
 
   // Initial Data Load
   useEffect(() => {
@@ -62,19 +72,6 @@ const App: React.FC = () => {
           }
       };
 
-      const params = new URLSearchParams(window.location.search);
-      const verifyToken = params.get('verify');
-      if (verifyToken) {
-          StorageService.verifyEmail(verifyToken).then(res => {
-              if (res.success) {
-                  alert("✅ " + res.message); 
-                  window.history.replaceState({}, document.title, window.location.pathname);
-              } else {
-                  alert("❌ " + res.message); 
-              }
-          });
-      }
-
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
               const docRef = doc(db, 'users', firebaseUser.uid);
@@ -91,7 +88,6 @@ const App: React.FC = () => {
                           groupIds: ['g-admin']
                       };
                       await setDoc(docRef, userData, { merge: true });
-                      alert("System recognized Super Admin. Access updated.");
                   }
 
                   userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
@@ -115,10 +111,7 @@ const App: React.FC = () => {
   }, [translations, targetLanguage]);
 
   const handleNavigate = (page: string) => setCurrentPage(page);
-
-  const handleImportSentences = async () => { 
-      window.location.reload(); 
-  };
+  const handleImportSentences = async () => { window.location.reload(); };
   
   const handleSaveTranslation = async (translation: Translation) => {
     await StorageService.saveTranslation(translation);
@@ -214,6 +207,11 @@ const App: React.FC = () => {
   const handleLogin = (loggedInUser: User) => { setUser(loggedInUser); };
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
 
+  // Render
+  if (showVerifier) {
+      return <EmailVerifier onVerified={() => { setShowVerifier(false); }} />;
+  }
+
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div></div>;
   if (!user) return <Auth onLogin={handleLogin} />;
 
@@ -222,7 +220,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-brand-200 selection:text-brand-900">
-      <ToastContainer /> {/* GLOBAL TOASTS */}
+      <ToastContainer /> 
       {showDemoBanner && (
           <div className="bg-brand-600 text-white px-4 py-2 text-center text-sm font-medium flex justify-between items-center shadow-sm">
               <span>⚠ <strong>Cloud Demo:</strong> Connected to Firebase Firestore.</span>

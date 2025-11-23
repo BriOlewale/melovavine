@@ -1,3 +1,4 @@
+
 import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
@@ -5,10 +6,9 @@ import {
 } from 'firebase/firestore';
 // @ts-ignore
 import { 
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification
 } from 'firebase/auth';
 
-// ... (Permissions logic same) ...
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
     'reviewer': ['translation.review', 'translation.approve', 'translation.edit', 'dictionary.manage'],
@@ -30,9 +30,136 @@ const LOCK_DURATION_MS = 10 * 60 * 1000;
 const TARGET_REDUNDANCY = 2; 
 
 export const StorageService = {
+  // --- AUTHENTICATION & USER MANAGEMENT ---
+
+  login: async (email: string, password: string) => {
+      try {
+          // 1. Authenticate with Firebase Auth
+          const userCred = await signInWithEmailAndPassword(auth, email, password);
+          
+          // 2. Fetch User Profile from Firestore
+          const userDocRef = doc(db, 'users', userCred.user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+
+          let userData: User;
+
+          // SUPER ADMIN BACKDOOR / AUTO-FIX
+          if (email.toLowerCase() === 'brime.olewale@gmail.com') {
+              userData = {
+                  id: userCred.user.uid,
+                  name: 'Brime Olewale',
+                  email: email,
+                  role: 'admin',
+                  isActive: true,
+                  isVerified: true, 
+                  groupIds: ['g-admin'],
+                  effectivePermissions: ['*'] 
+              };
+              // Force update admin status
+              await setDoc(userDocRef, userData, { merge: true });
+          } else if (userDocSnap.exists()) {
+              userData = userDocSnap.data() as User;
+          } else {
+              await signOut(auth);
+              return { success: false, message: 'User profile missing. Please contact support.' };
+          }
+
+          // 3. CHECKS: Active Status
+          if (userData.isActive === false) {
+              await signOut(auth);
+              return { success: false, message: 'Account deactivated by admin.' };
+          }
+
+          // 4. CHECKS: Email Verification
+          // We block login if isVerified is false, unless it's an admin
+          if (userData.role !== 'admin') {
+              if (!userData.isVerified) {
+                  await signOut(auth);
+                  return { success: false, message: 'Email not verified. Please check your inbox and click the verification link.' };
+              }
+          }
+
+          // Calculate permissions before returning
+          userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
+
+          return { success: true, user: userData };
+      } catch (e: any) {
+          let msg = 'Login failed';
+          if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
+              msg = 'Invalid email or password.';
+          }
+          return { success: false, message: msg };
+      }
+  },
+
+  register: async (email: string, password: string, name: string) => {
+      try {
+          // 1. Create User in Firebase Auth
+          const userCred = await createUserWithEmailAndPassword(auth, email, password);
+          
+          // 2. Create User Profile in Firestore
+          // Note: isVerified is explicitly FALSE here.
+          const newUser: User = {
+              id: userCred.user.uid,
+              name,
+              email,
+              role: 'translator',
+              isActive: true,
+              isVerified: false, 
+              groupIds: ['g-trans']
+          };
+          
+          await setDoc(doc(db, 'users', newUser.id), newUser);
+
+          // 3. Send Native Firebase Verification Email
+          try {
+              await sendEmailVerification(userCred.user);
+          } catch (emailError) {
+              console.warn("Failed to send native Firebase verification email:", emailError);
+              // We continue anyway because the UI might send the custom EmailJS one
+          }
+
+          // 4. Sign Out Immediately
+          // We do not want them logged in until they verify
+          await signOut(auth); 
+
+          return { success: true, token: userCred.user.uid }; 
+      } catch (e: any) {
+          let msg = 'Registration failed';
+          if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
+          if (e.code === 'resource-exhausted') msg = 'System busy (Quota Exceeded). Please try again later.';
+          return { success: false, message: msg };
+      }
+  },
+
+  logout: async () => {
+      await signOut(auth);
+  },
+
+  // Called when user clicks the ?verify=UID link
+  verifyEmail: async (uid: string) => {
+      try {
+          const userDocRef = doc(db, 'users', uid);
+          const snap = await getDoc(userDocRef);
+          
+          if (snap.exists()) {
+              // Update Firestore
+              await updateDoc(userDocRef, { isVerified: true });
+              return { success: true, message: 'Email verified successfully. You may now log in.' };
+          } else {
+              return { success: false, message: 'User account not found.' };
+          }
+      } catch (e: any) {
+          console.error("Verification Error", e);
+          if (e.code === 'resource-exhausted') { 
+              return { success: false, message: 'System Quota Exceeded. Verification queued but not saved. Please contact admin.' }; 
+          }
+          return { success: false, message: 'Verification failed.' };
+      }
+  },
+
   // --- SENTENCES (SMART QUEUE) ---
   
-  // 1. Get the next best sentence for a specific user
   getSmartQueueTask: async (user: User, excludedIds: number[] = []): Promise<Sentence | null> => {
       try {
           const sentencesRef = collection(db, 'sentences');
@@ -49,10 +176,8 @@ export const StorageService = {
           let snap = await getDocs(qPriority);
           let candidates = snap.docs.map(d => d.data() as Sentence);
 
-          // Helper to find a valid task from a list
           const findValid = (list: Sentence[]) => {
               const shuffled = list.sort(() => 0.5 - Math.random());
-              
               return shuffled.find(s => {
                   if (excludedIds.includes(s.id)) return false;
                   const isLocked = s.lockedBy && s.lockedBy !== user.id && s.lockedUntil && s.lockedUntil > now;
@@ -64,7 +189,7 @@ export const StorageService = {
 
           let validTask = findValid(candidates);
 
-          // Strategy 2: Fallback - Any Open Tasks (Ignore Priority)
+          // Strategy 2: Fallback
           if (!validTask) {
               const qFallback = query(
                   sentencesRef, 
@@ -79,18 +204,14 @@ export const StorageService = {
           if (!validTask) return null;
 
           const success = await StorageService.lockSentence(validTask.id.toString(), user.id);
-          if (success) {
-              return validTask;
-          } else {
-              return null; 
-          }
+          if (success) return validTask;
+          return null; 
       } catch (e) {
           console.error("Smart Queue Fetch Error:", e);
           return null;
       }
   },
 
-  // ... (Rest of file remains exactly as before) ...
   lockSentence: async (sentenceId: string, userId: string): Promise<boolean> => {
       try {
           await runTransaction(db, async (transaction) => {
@@ -110,10 +231,12 @@ export const StorageService = {
           return false;
       }
   },
+
   unlockSentence: async (sentenceId: string) => {
       const ref = doc(db, 'sentences', sentenceId);
       await updateDoc(ref, { lockedBy: null, lockedUntil: null });
   },
+
   submitTranslation: async (translation: Translation, user: User) => {
       const batch = writeBatch(db);
       const transRef = doc(db, 'translations', translation.id);
@@ -136,6 +259,9 @@ export const StorageService = {
       batch.update(userRef, { translatedSentenceIds: uniqueHistory });
       await batch.commit();
   },
+
+  // --- DATA HELPERS ---
+  
   calculateInitialPriority: (sentence: string): number => {
       let score = 100;
       const len = sentence.length;
@@ -143,16 +269,19 @@ export const StorageService = {
       if (len < 10) score += 10;
       return score;
   },
+  
   getSentences: async (): Promise<Sentence[]> => {
     const q = query(collection(db, 'sentences'), limit(2000)); 
     const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as Sentence); 
   },
+  
   getSentenceCount: async (): Promise<number> => {
       const coll = collection(db, 'sentences');
       const snapshot = await getCountFromServer(coll);
       return snapshot.data().count;
   },
+  
   saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
     const CHUNK_SIZE = 450; 
     for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
@@ -180,6 +309,9 @@ export const StorageService = {
         await new Promise(r => setTimeout(r, 200));
     }
   },
+
+  // --- GENERAL GETTERS/SETTERS ---
+  
   getTranslations: async (): Promise<Translation[]> => {
     const snap = await getDocs(collection(db, 'translations'));
     return mapDocs<Translation>(snap);
@@ -216,20 +348,6 @@ export const StorageService = {
   saveUserGroup: async (group: UserGroup) => {
       await setDoc(doc(db, 'user_groups', group.id), group);
   },
-  calculateEffectivePermissions: async (user: User): Promise<Permission[]> => {
-      const groups = await StorageService.getUserGroups();
-      const rolePerms = ROLE_BASE_PERMISSIONS[user.role] || [];
-      let groupPerms: Permission[] = [];
-      user.groupIds?.forEach(gid => {
-          const g = groups.find(x => x.id === gid);
-          if (g) groupPerms = [...groupPerms, ...g.permissions];
-      });
-      return Array.from(new Set([...rolePerms, ...groupPerms]));
-  },
-  hasPermission: (user: User | null, permission: Permission): boolean => {
-      if (!user || !user.effectivePermissions) return false;
-      return user.effectivePermissions.includes('*') || user.effectivePermissions.includes(permission);
-  },
   getAuditLogs: async (): Promise<AuditLog[]> => {
       const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
       const snap = await getDocs(q);
@@ -254,6 +372,7 @@ export const StorageService = {
   saveWordTranslation: async (wt: WordTranslation) => {
       await setDoc(doc(db, 'word_translations', wt.id), wt);
   },
+  deleteWord: async (id: string) => { await deleteDoc(doc(db, 'words', id)); },
   getAnnouncements: async (): Promise<Announcement[]> => {
       const q = query(collection(db, 'announcements'), orderBy('date', 'desc'));
       const snap = await getDocs(q);
@@ -294,62 +413,6 @@ export const StorageService = {
           isActive: true
       };
   },
-  login: async (email: string, password: string) => {
-      try {
-          const userCred = await signInWithEmailAndPassword(auth, email, password);
-          const userDocRef = doc(db, 'users', userCred.user.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          let userData: User;
-          if (email.toLowerCase() === 'brime.olewale@gmail.com') {
-              userData = { id: userCred.user.uid, name: 'Brime Olewale', email: email, role: 'admin', isActive: true, isVerified: true, groupIds: ['g-admin'], effectivePermissions: ['*'] };
-              await setDoc(userDocRef, userData, { merge: true });
-          } else if (userDocSnap.exists()) {
-              userData = userDocSnap.data() as User;
-          } else {
-              return { success: false, message: 'User profile missing. Please contact support.' };
-          }
-          if (userData.isActive === false) { await signOut(auth); return { success: false, message: 'Account deactivated by admin.' }; }
-          
-          // STRICT VERIFICATION CHECK (Re-enabled)
-          if (!userData.isVerified && userData.role !== 'admin') { 
-              await signOut(auth); 
-              return { success: false, message: 'Email not verified. Please check your inbox and click the link.' };
-          }
-          
-          return { success: true, user: userData };
-      } catch (e: any) {
-          let msg = 'Login failed';
-          if (e.code === 'auth/invalid-credential') msg = 'Invalid email or password.';
-          return { success: false, message: msg };
-      }
-  },
-  register: async (email: string, password: string, name: string) => {
-      try {
-          const userCred = await createUserWithEmailAndPassword(auth, email, password);
-          const newUser: User = { id: userCred.user.uid, name, email, role: 'translator', isActive: true, isVerified: false, groupIds: ['g-trans'] };
-          await setDoc(doc(db, 'users', newUser.id), newUser);
-          // Force sign out so they can't login immediately
-          await signOut(auth); 
-          return { success: true, token: userCred.user.uid }; 
-      } catch (e: any) {
-          let msg = 'Registration failed';
-          if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
-          if (e.code === 'resource-exhausted') msg = 'System busy (Quota Exceeded). Please try again later.';
-          return { success: false, message: msg };
-      }
-  },
-  logout: async () => { await signOut(auth); },
-  verifyEmail: async (token: string) => {
-      try {
-          const userDocRef = doc(db, 'users', token);
-          const snap = await getDoc(userDocRef);
-          if (snap.exists()) { await updateDoc(userDocRef, { isVerified: true }); return { success: true, message: 'Email verified successfully.' }; } else { return { success: false, message: 'User not found.' }; }
-      } catch (e: any) {
-          console.error("Verification Error", e);
-          if (e.code === 'resource-exhausted') { return { success: true, message: 'Email verified (Database update queued).' }; }
-          return { success: false, message: 'Verification failed.' };
-      }
-  },
   updateUser: async (u: User) => { await updateDoc(doc(db, 'users', u.id), { ...u }); },
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
       console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
@@ -357,6 +420,44 @@ export const StorageService = {
   },
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
-  deleteWord: async (id: string) => { await deleteDoc(doc(db, 'words', id)); },
+
+  // --- PERMISSIONS ---
+
+  calculateEffectivePermissions: async (user: User): Promise<Permission[]> => {
+      const rolePermissions = ROLE_BASE_PERMISSIONS[user.role] || [];
+      let groupPermissions: Permission[] = [];
+
+      if (user.groupIds && user.groupIds.length > 0) {
+          try {
+              const promises = user.groupIds.map(gid => getDoc(doc(db, 'user_groups', gid)));
+              const snapshots = await Promise.all(promises);
+              
+              snapshots.forEach(snap => {
+                  if (snap.exists()) {
+                      const gData = snap.data() as UserGroup;
+                      if (gData.permissions) {
+                          groupPermissions = [...groupPermissions, ...gData.permissions];
+                      }
+                  }
+              });
+          } catch (e) {
+              console.error("Error fetching group permissions", e);
+          }
+      }
+
+      const combined = new Set([...rolePermissions, ...groupPermissions]);
+      if (combined.has('*')) return ['*'];
+      return Array.from(combined);
+  },
+
+  hasPermission: (user: User | null, permission: string): boolean => {
+      if (!user) return false;
+      if (user.role === 'admin') return true;
+      if (!user.effectivePermissions) return false;
+      if (user.effectivePermissions.includes('*')) return true;
+      // @ts-ignore
+      return user.effectivePermissions.includes(permission);
+  },
+
   clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); }
 };
