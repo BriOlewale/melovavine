@@ -26,13 +26,15 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [historyModalTranslation, setHistoryModalTranslation] = useState<Translation | null>(null);
+  
+  // Local state to track comment input per translation ID
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
 
   const sentence = sentences[index];
   const sentenceTranslations = translations.filter(t => t.sentenceId === sentence?.id && t.languageCode === targetLanguage.code);
   const myTranslation = sentenceTranslations.find(t => t.translatorId === user.id);
   const communityTranslations = sentenceTranslations.filter(t => t.translatorId !== user.id).sort((a, b) => b.votes - a.votes);
 
-  // Check for duplicates in real-time
   const duplicate = communityTranslations.find(t => t.text.trim().toLowerCase() === text.trim().toLowerCase());
 
   useEffect(() => { setText(myTranslation?.text || ''); }, [myTranslation, sentence]);
@@ -70,6 +72,18 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
       return wordTranslations.filter(wt => wt.wordId === word.id && wt.languageCode === targetLanguage.code);
   };
 
+  const handleCommentChange = (id: string, val: string) => {
+      setCommentInputs(prev => ({ ...prev, [id]: val }));
+  };
+
+  const submitComment = (id: string) => {
+      const txt = commentInputs[id];
+      if (txt && txt.trim()) {
+          onAddComment(id, txt);
+          setCommentInputs(prev => ({ ...prev, [id]: '' }));
+      }
+  };
+
   if (!sentence) return <div className="text-center py-20 text-slate-400">Loading data...</div>;
 
   return (
@@ -99,7 +113,6 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                 </span>
              ))}
           </div>
-          {/* Existing Translations Indicator */}
           {communityTranslations.length > 0 && (
              <div className="absolute -top-3 right-6 bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm border border-amber-200 flex items-center gap-1 animate-bounce">
                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
@@ -121,7 +134,6 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
               onChange={e => setText(e.target.value)} 
             />
             
-            {/* Duplicate Warning */}
             {duplicate && (
                 <div className="mb-4 p-3 bg-orange-50 border border-orange-100 text-orange-700 text-sm rounded-lg flex items-start gap-2">
                     <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -175,6 +187,18 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                           <span className="text-xs text-slate-400">{new Date(t.timestamp).toLocaleDateString()}</span>
                           {t.status === 'approved' && <Badge color="green">Approved</Badge>}
                        </div>
+                       
+                       {/* Render Comments if any */}
+                       {t.comments && t.comments.length > 0 && (
+                           <div className="mt-3 space-y-2 bg-white/50 p-2 rounded-lg border border-slate-100">
+                               {t.comments.map(c => (
+                                   <div key={c.id} className="text-sm text-slate-700">
+                                       <span className="font-bold text-xs text-slate-900 mr-1">{c.userName}:</span>
+                                       {c.text}
+                                   </div>
+                               ))}
+                           </div>
+                       )}
                     </div>
                     <div className="flex flex-col items-center bg-white rounded-xl border border-slate-100 shadow-sm p-1">
                        <button onClick={() => onVote(t.id, 'up')} className={`p-1.5 rounded-lg transition-colors ${voteStatus === 'up' ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
@@ -187,13 +211,16 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                     </div>
                  </div>
                  <div className="mt-4 pt-3 border-t border-slate-200/60">
-                     <div className="flex gap-3">
+                     <div className="flex gap-2">
                          <input 
                             type="text" 
                             placeholder="Add a comment..." 
-                            className="flex-1 text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all" 
-                            onKeyDown={(e) => { if (e.key === 'Enter') { onAddComment(t.id, e.currentTarget.value); e.currentTarget.value = ''; }}} 
+                            className="flex-1 text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all"
+                            value={commentInputs[t.id] || ''}
+                            onChange={(e) => handleCommentChange(t.id, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') submitComment(t.id); }} 
                          />
+                         <Button size="sm" variant="secondary" onClick={() => submitComment(t.id)} disabled={!commentInputs[t.id]?.trim()}>Post</Button>
                          <Button size="sm" variant="ghost" onClick={() => setHistoryModalTranslation(t)}>History</Button>
                      </div>
                  </div>
