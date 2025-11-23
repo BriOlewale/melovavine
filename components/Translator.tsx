@@ -32,10 +32,16 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
   const myTranslation = sentenceTranslations.find(t => t.translatorId === user.id);
   const communityTranslations = sentenceTranslations.filter(t => t.translatorId !== user.id).sort((a, b) => b.votes - a.votes);
 
+  // Check for duplicates in real-time
+  const duplicate = communityTranslations.find(t => t.text.trim().toLowerCase() === text.trim().toLowerCase());
+
   useEffect(() => { setText(myTranslation?.text || ''); }, [myTranslation, sentence]);
 
   const handleSave = () => {
       if (!sentence) return;
+      if (duplicate) {
+          if(!confirm("This exact translation already exists below. Are you sure you want to add a duplicate?")) return;
+      }
       onSaveTranslation({
           id: myTranslation?.id || crypto.randomUUID(),
           sentenceId: sentence.id,
@@ -84,7 +90,7 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
        </div>
 
        {/* ENGLISH SOURCE CARD */}
-       <Card className="!p-8 !rounded-3xl border-l-8 border-l-teal-500 shadow-xl shadow-teal-900/5">
+       <Card className="!p-8 !rounded-3xl border-l-8 border-l-teal-500 shadow-xl shadow-teal-900/5 relative overflow-visible">
           <div className="text-teal-600 text-xs font-extrabold uppercase tracking-widest mb-4">Translate to {targetLanguage.name}</div>
           <div className="text-2xl sm:text-4xl font-bold leading-tight text-slate-800">
              {sentence.english.split(' ').map((w, i) => (
@@ -93,6 +99,13 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
                 </span>
              ))}
           </div>
+          {/* Existing Translations Indicator */}
+          {communityTranslations.length > 0 && (
+             <div className="absolute -top-3 right-6 bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm border border-amber-200 flex items-center gap-1 animate-bounce">
+                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                 {communityTranslations.length} existing translation{communityTranslations.length !== 1 && 's'}
+             </div>
+          )}
        </Card>
 
        {/* INPUT CARD */}
@@ -107,6 +120,18 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
               value={text} 
               onChange={e => setText(e.target.value)} 
             />
+            
+            {/* Duplicate Warning */}
+            {duplicate && (
+                <div className="mb-4 p-3 bg-orange-50 border border-orange-100 text-orange-700 text-sm rounded-lg flex items-start gap-2">
+                    <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    <div>
+                        <span className="font-bold">Similar translation found below.</span>
+                        <br />Consider voting for the existing one instead of adding a duplicate.
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-t border-slate-100 pt-4 mt-2">
                <Button variant="ghost" onClick={handleAi} className="!text-purple-600 hover:!bg-purple-50 w-full sm:w-auto flex gap-2">
                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
@@ -133,8 +158,9 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
          )}
          {communityTranslations.map(t => {
             const voteStatus = t.voteHistory?.[user.id];
+            const isDuplicateOfCurrent = t.text.trim().toLowerCase() === text.trim().toLowerCase();
             return (
-              <Card key={t.id} className="!bg-slate-50/50 !border-slate-200">
+              <Card key={t.id} className={`!bg-slate-50/50 !border-slate-200 ${isDuplicateOfCurrent ? 'ring-2 ring-orange-300 bg-orange-50' : ''}`}>
                  <div className="flex justify-between items-start gap-4">
                     <div className="flex-1">
                        <div className="text-lg font-medium text-slate-700 mb-2">{t.text}</div>
