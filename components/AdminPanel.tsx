@@ -120,10 +120,10 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
       }
   };
 
-  const handleUpdateUserGroups = async () => {
+  const handleUpdateUser = async () => {
       if (editingUser) {
           await StorageService.updateUser(editingUser);
-          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_USER_GROUPS', `Updated groups for user: ${editingUser.email}`);
+          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_USER', `Updated profile for user: ${editingUser.email}`);
           setIsUserModalOpen(false);
           loadData();
       }
@@ -210,7 +210,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                                         <Badge color={u.isActive ? 'green' : 'red'}>{u.isActive ? 'Active' : 'Inactive'}</Badge>
                                     </td>
                                     <td className="px-6 py-4 text-right text-sm font-medium space-x-2">
-                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-brand-600 hover:text-brand-900">Edit Groups</button>
+                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-brand-600 hover:text-brand-900">Edit</button>
                                         <button onClick={() => setResetPasswordUserId(u.id)} className="text-gray-600 hover:text-gray-900">Reset PWD</button>
                                     </td>
                                 </tr>
@@ -369,7 +369,9 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
           )}
        </main>
 
-       {/* MODALS - Keeping exactly as is */}
+       {/* MODALS */}
+       
+       {/* Group Modal */}
        {isGroupModalOpen && editingGroup && (
            <Modal isOpen={isGroupModalOpen} onClose={() => setIsGroupModalOpen(false)} title={editingGroup.id ? "Edit Group" : "Create Group"}>
                <div className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -408,18 +410,34 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
        {isUserModalOpen && editingUser && (
            <Modal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} title={`Edit User: ${editingUser.name}`}>
                <div className="space-y-4">
+                   {/* Name Editing Field */}
+                   <Input 
+                        label="Display Name" 
+                        value={editingUser.name} 
+                        onChange={e => setEditingUser({...editingUser, name: e.target.value})} 
+                   />
                    <div>
                        <label className="block text-sm font-medium text-gray-700 mb-2">Assigned Groups</label>
                        <div className="space-y-2 border p-3 rounded">
                            {groups.map(g => (
                                <label key={g.id} className="flex items-center space-x-2">
-                                   <input type="checkbox" checked={editingUser.groupIds?.includes(g.id)} onChange={() => { const current = editingUser.groupIds || []; const newGroups = current.includes(g.id) ? current.filter(id => id !== g.id) : [...current, g.id]; setEditingUser({ ...editingUser, groupIds: newGroups }); }} />
+                                   <input 
+                                      type="checkbox" 
+                                      checked={editingUser.groupIds?.includes(g.id)} 
+                                      onChange={() => {
+                                          const current = editingUser.groupIds || [];
+                                          const newGroups = current.includes(g.id) 
+                                              ? current.filter(id => id !== g.id)
+                                              : [...current, g.id];
+                                          setEditingUser({ ...editingUser, groupIds: newGroups });
+                                      }}
+                                   />
                                    <span>{g.name}</span>
                                </label>
                            ))}
                        </div>
                    </div>
-                   <Button onClick={handleUpdateUserGroups} className="w-full">Update User</Button>
+                   <Button onClick={handleUpdateUser} className="w-full">Save Changes</Button>
                </div>
            </Modal>
        )}
