@@ -3,6 +3,8 @@ import { StorageService } from '../services/storageService';
 import { Button, Card, Input } from './UI';
 import { User } from '../types';
 import emailjs from '@emailjs/browser';
+import { auth } from '../services/firebaseConfig'; 
+import { sendEmailVerification } from 'firebase/auth';
 
 export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [view, setView] = useState<'login' | 'register' | 'sent'>('login');
@@ -20,18 +22,28 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
       try {
         if (view === 'login') {
             const res = await StorageService.login(email, password);
-            if (res.success && res.user) onLogin(res.user);
-            else setError(res.message || 'Error');
+            if (res.success && res.user) {
+                // Optional: Enforce email verification before login
+                // const fbUser = auth.currentUser;
+                // if (fbUser && !fbUser.emailVerified) {
+                //    setError("Please verify your email first.");
+                //    return;
+                // }
+                onLogin(res.user);
+            } else {
+                setError(res.message || 'Error');
+            }
         } else if (view === 'register') {
             const res = await StorageService.register(email, password, name);
             if (res.success) {
                 // Attempt to send real email if configured
                 const settings = await StorageService.getSystemSettings();
+                let emailSent = false;
+
                 if (settings.emailJsServiceId && settings.emailJsTemplateId && settings.emailJsPublicKey) {
                     const templateParams = {
                         to_name: name,
                         to_email: email,
-                        // Generate a verification link (this logic relies on App.tsx parsing query params)
                         verification_link: `${window.location.origin}/?verify=${res.token}`,
                         message: "Welcome to Va Vanagi! Please verify your email to start translating."
                     };
@@ -43,21 +55,31 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                             templateParams, 
                             settings.emailJsPublicKey
                         );
-                        console.log("Email Sent Successfully");
+                        console.log("Email Sent Successfully via EmailJS");
+                        emailSent = true;
                     } catch (emailErr) {
-                        console.error("Failed to send email", emailErr);
-                        // Don't block registration success, just warn
-                        alert("Account created, but email sending failed. Please check Console or Admin Settings.");
+                        console.error("Failed to send email via EmailJS", emailErr);
                     }
                 }
-                // Switch to 'sent' view
+                
+                // Fallback: Send standard Firebase verification email if EmailJS fails or isn't configured
+                if (!emailSent && auth.currentUser) {
+                    try {
+                        await sendEmailVerification(auth.currentUser);
+                        console.log("Sent standard Firebase verification email");
+                    } catch (fbErr) {
+                        console.error("Failed to send Firebase verification", fbErr);
+                    }
+                }
+
+                // Switch to 'sent' view instead of auto-login
                 setView('sent');
             } else {
                 setError(res.message || 'Error');
             }
         }
-      } catch (err) {
-          setError("An unexpected error occurred.");
+      } catch (err: any) {
+          setError(err.message || "An unexpected error occurred.");
       } finally {
           setIsLoading(false);
       }
@@ -73,9 +95,6 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                     We have sent a verification link to <strong>{email}</strong>. 
                     Please click the link in the email to activate your account.
                 </p>
-                <p className="text-xs text-gray-400 mb-6">
-                    (If you didn't configure EmailJS keys in Admin Settings, use this link to verify: <a href={`/?verify=123`} className="underline text-brand-600">Simulate Click</a>)
-                </p>
                 <Button onClick={() => setView('login')} variant="secondary">Back to Login</Button>
             </Card>
         </div>
@@ -86,7 +105,11 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
        <Card className="w-full max-w-md">
           <div className="text-center mb-6">
-            <div className="mx-auto h-12 w-12 rounded-full bg-gradient-to-br from-teal-300 via-cyan-400 to-blue-500 flex items-center justify-center text-white font-bold">VV</div>
+            <img 
+                src="https://i.postimg.cc/zvjJsmdg/9f6d5225-d82a-4eae-a71f-737baf3c894f.png" 
+                alt="Va Vanagi Logo" 
+                className="mx-auto h-32 w-auto mb-4 object-contain"
+            />
             <h2 className="mt-2 text-2xl font-bold">{view === 'login' ? 'Sign In' : 'Sign Up'}</h2>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
