@@ -33,26 +33,20 @@ export const StorageService = {
 
   login: async (email: string, password: string) => {
       try {
-          // 1. Authenticate with Firebase Auth
           const userCred = await signInWithEmailAndPassword(auth, email, password);
-          
-          // 2. Force reload to get latest verification status
           await userCred.user.reload();
 
-          // 3. Check Verification (Admin Bypass)
           const isAdminEmail = email.toLowerCase() === 'brime.olewale@gmail.com';
           if (!isAdminEmail && !userCred.user.emailVerified) {
               await signOut(auth);
               return { success: false, message: 'Please verify your email before signing in.' };
           }
 
-          // 4. Fetch User Profile from Firestore
           const userDocRef = doc(db, 'users', userCred.user.uid);
           const userDocSnap = await getDoc(userDocRef);
 
           let userData: User;
 
-          // SUPER ADMIN AUTO-FIX
           if (isAdminEmail) {
               userData = {
                   id: userCred.user.uid,
@@ -72,19 +66,16 @@ export const StorageService = {
               return { success: false, message: 'User profile missing. Please contact support.' };
           }
 
-          // 5. Check Active Status
           if (userData.isActive === false) {
               await signOut(auth);
               return { success: false, message: 'Account deactivated by admin.' };
           }
 
-          // 6. Sync Database Verification Status
           if (userCred.user.emailVerified && userData.isVerified !== true) {
                await updateDoc(userDocRef, { isVerified: true });
                userData.isVerified = true;
           }
 
-          // Calculate permissions before returning
           userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
 
           return { success: true, user: userData };
@@ -99,10 +90,7 @@ export const StorageService = {
 
   register: async (email: string, password: string, name: string) => {
       try {
-          // 1. Create User in Firebase Auth
           const userCred = await createUserWithEmailAndPassword(auth, email, password);
-          
-          // 2. Create User Profile in Firestore (Unverified)
           const newUser: User = {
               id: userCred.user.uid,
               name,
@@ -112,21 +100,9 @@ export const StorageService = {
               isVerified: false, 
               groupIds: ['g-trans']
           };
-          
           await setDoc(doc(db, 'users', newUser.id), newUser);
-
-          // 3. Send Native Firebase Verification Email
-          try {
-              await sendEmailVerification(userCred.user);
-          } catch (emailError) {
-              console.error("Failed to send verification email:", emailError);
-              // Note: User is created, but they can't verify. They might need to use "Forgot Password" or contact admin.
-          }
-
-          // 4. Sign Out Immediately
-          // We do not want them logged in until they click the link in their email
+          try { await sendEmailVerification(userCred.user); } catch (emailError) { console.error("Failed to send verification email:", emailError); }
           await signOut(auth); 
-
           return { success: true }; 
       } catch (e: any) {
           let msg = 'Registration failed';
@@ -136,15 +112,46 @@ export const StorageService = {
       }
   },
 
-  logout: async () => {
-      await signOut(auth);
-  },
+  logout: async () => { await signOut(auth); },
 
   updateUser: async (u: User) => { await updateDoc(doc(db, 'users', u.id), { ...u }); },
   
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
       console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
       alert("Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'.");
+  },
+
+  // --- PERMISSIONS (RESTORED) ---
+  getUserGroups: async (): Promise<UserGroup[]> => {
+      const snap = await getDocs(collection(db, 'user_groups'));
+      const groups = mapDocs<UserGroup>(snap);
+      if (groups.length === 0) {
+          return [
+              { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
+              { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
+              { id: 'g-trans', name: 'Translators', permissions: ['translation.create'], description: 'Contributors' }
+          ];
+      }
+      return groups;
+  },
+  saveUserGroup: async (group: UserGroup) => {
+      await setDoc(doc(db, 'user_groups', group.id), group);
+  },
+
+  calculateEffectivePermissions: async (user: User): Promise<Permission[]> => {
+      const groups = await StorageService.getUserGroups();
+      const rolePerms = ROLE_BASE_PERMISSIONS[user.role] || [];
+      let groupPerms: Permission[] = [];
+      user.groupIds?.forEach(gid => {
+          const g = groups.find(x => x.id === gid);
+          if (g) groupPerms = [...groupPerms, ...g.permissions];
+      });
+      return Array.from(new Set([...rolePerms, ...groupPerms]));
+  },
+  
+  hasPermission: (user: User | null, permission: Permission): boolean => {
+      if (!user || !user.effectivePermissions) return false;
+      return user.effectivePermissions.includes('*') || user.effectivePermissions.includes(permission);
   },
 
   // --- DATA & QUEUE LOGIC (Unchanged) ---
@@ -303,21 +310,7 @@ export const StorageService = {
   saveProject: async (project: Project) => {
       await setDoc(doc(db, 'projects', project.id), project);
   },
-  getUserGroups: async (): Promise<UserGroup[]> => {
-      const snap = await getDocs(collection(db, 'user_groups'));
-      const groups = mapDocs<UserGroup>(snap);
-      if (groups.length === 0) {
-          return [
-              { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
-              { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
-              { id: 'g-trans', name: 'Translators', permissions: ['translation.create'], description: 'Contributors' }
-          ];
-      }
-      return groups;
-  },
-  saveUserGroup: async (group: UserGroup) => {
-      await setDoc(doc(db, 'user_groups', group.id), group);
-  },
+  
   getAuditLogs: async (): Promise<AuditLog[]> => {
       const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
       const snap = await getDocs(q);

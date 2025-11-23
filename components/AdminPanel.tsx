@@ -222,21 +222,14 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               </div>
           )}
           
-          {/* ... Other Tabs (Groups, Projects, Data, Logs) ... */}
-          {/* (Keeping structure identical to previous correct version, just removing Email settings tab) */}
-
           {tab === 'settings' && (
               <div className="max-w-xl space-y-6">
                  <h2 className="text-2xl font-bold">System Settings</h2>
-                 
                  <Card>
                      <h3 className="text-lg font-medium mb-4">Artificial Intelligence</h3>
                      <Input label="Google Gemini API Key" type="password" value={settings.geminiApiKey || ''} onChange={e => setSettings({...settings, geminiApiKey: e.target.value})} />
                      <p className="text-xs text-gray-500 mt-2">Required for translation suggestions and quality scoring.</p>
                  </Card>
-                 
-                 {/* EmailJS Config REMOVED */}
-
                  <Card>
                      <h3 className="text-lg font-medium mb-4">General</h3>
                      <label className="flex items-center space-x-2">
@@ -245,6 +238,46 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                      </label>
                  </Card>
                  <div className="pt-4"><Button onClick={saveSettings} fullWidth>Save All Settings</Button></div>
+              </div>
+          )}
+
+          {/* Re-enabling Data & Logs tabs */}
+          {tab === 'data' && (
+              <div className="max-w-2xl">
+                 <h2 className="text-2xl font-bold mb-6">Data Management</h2>
+                 <Card className="mb-6">
+                     <h3 className="font-bold mb-2">Import Sentences</h3>
+                     <p className="text-sm text-gray-600 mb-4">Upload a JSON file containing an array of objects with <code>id</code> and <code>english</code> (or <code>sentence</code>) fields.</p>
+                     <input type="file" accept=".json" onChange={handleImport} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"/>
+                     {importStatus && (
+                         <div className={`mt-4 p-3 rounded font-mono text-sm ${importStatus.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
+                             {importStatus}
+                         </div>
+                     )}
+                 </Card>
+                 <Card className="mb-6">
+                     <h3 className="font-bold mb-2">Export Translations</h3>
+                     <p className="text-sm text-gray-600 mb-4">Download the full translation dataset.</p>
+                     <Button fullWidth onClick={() => alert("Export unavailable in this view.")}>Download JSON</Button>
+                 </Card>
+              </div>
+          )}
+          
+          {tab === 'logs' && (
+              <div>
+                 <h2 className="text-2xl font-bold mb-6">Audit Logs</h2>
+                 <div className="md:hidden space-y-3">
+                     {logs.slice(0, 30).map(log => (
+                         <div key={log.id} className="bg-white p-3 rounded border text-sm">
+                             <div className="flex justify-between mb-1">
+                                 <span className="font-bold text-gray-800">{log.userName}</span>
+                                 <span className="text-xs text-gray-400">{new Date(log.timestamp).toLocaleDateString()}</span>
+                             </div>
+                             <div className="font-mono text-xs text-brand-600 mb-1">{log.action}</div>
+                             <div className="text-gray-600">{log.details}</div>
+                         </div>
+                     ))}
+                 </div>
               </div>
           )}
        </main>
@@ -257,27 +290,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                         value={editingUser.name} 
                         onChange={e => setEditingUser({...editingUser, name: e.target.value})} 
                    />
-                   <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">Assigned Groups</label>
-                       <div className="space-y-2 border p-3 rounded">
-                           {groups.map(g => (
-                               <label key={g.id} className="flex items-center space-x-2">
-                                   <input 
-                                      type="checkbox" 
-                                      checked={editingUser.groupIds?.includes(g.id)} 
-                                      onChange={() => {
-                                          const current = editingUser.groupIds || [];
-                                          const newGroups = current.includes(g.id) 
-                                              ? current.filter(id => id !== g.id)
-                                              : [...current, g.id];
-                                          setEditingUser({ ...editingUser, groupIds: newGroups });
-                                      }}
-                                   />
-                                   <span>{g.name}</span>
-                               </label>
-                           ))}
-                       </div>
-                   </div>
                    <Button onClick={handleUpdateUser} fullWidth>Save Changes</Button>
                </div>
            </Modal>
