@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -12,6 +13,7 @@ import { Auth } from './components/Auth';
 import { StorageService } from './services/storageService';
 import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
 import { auth } from './services/firebaseConfig';
+// @ts-ignore
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './services/firebaseConfig';
@@ -72,7 +74,7 @@ const App: React.FC = () => {
       }
 
       // Auth Listener
-      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
               // Fetch detailed profile
               const docRef = doc(db, 'users', firebaseUser.uid);

@@ -1,13 +1,17 @@
+
 import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
   collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc 
 } from 'firebase/firestore';
+// @ts-ignore
 import { 
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
 } from 'firebase/auth';
+import { 
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut 
+} from 'firebase/auth';
 
-// ... (Permissions Arrays are same as before) ...
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
     'reviewer': ['translation.review', 'translation.approve', 'translation.edit', 'dictionary.manage'],
@@ -47,12 +51,11 @@ export const StorageService = {
         });
         await batch.commit();
         if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
-        // Slightly longer delay to ensure connection stability
         await new Promise(r => setTimeout(r, 200));
     }
   },
 
-  // ... (Rest of the file remains the same, just pasting the key parts for context) ...
+  // --- TRANSLATIONS ---
   getTranslations: async (): Promise<Translation[]> => {
     const snap = await getDocs(collection(db, 'translations'));
     return mapDocs<Translation>(snap);
@@ -63,6 +66,8 @@ export const StorageService = {
   deleteTranslation: async (id: string) => {
     await deleteDoc(doc(db, 'translations', id));
   },
+
+  // --- PROJECTS ---
   getProjects: async (): Promise<Project[]> => {
       const snap = await getDocs(collection(db, 'projects'));
       const projects = mapDocs<Project>(snap);
@@ -74,6 +79,8 @@ export const StorageService = {
   saveProject: async (project: Project) => {
       await setDoc(doc(db, 'projects', project.id), project);
   },
+
+  // --- USER GROUPS ---
   getUserGroups: async (): Promise<UserGroup[]> => {
       const snap = await getDocs(collection(db, 'user_groups'));
       const groups = mapDocs<UserGroup>(snap);
@@ -89,6 +96,8 @@ export const StorageService = {
   saveUserGroup: async (group: UserGroup) => {
       await setDoc(doc(db, 'user_groups', group.id), group);
   },
+
+  // --- PERMISSIONS ---
   calculateEffectivePermissions: async (user: User): Promise<Permission[]> => {
       const groups = await StorageService.getUserGroups();
       const rolePerms = ROLE_BASE_PERMISSIONS[user.role] || [];
@@ -99,10 +108,13 @@ export const StorageService = {
       });
       return Array.from(new Set([...rolePerms, ...groupPerms]));
   },
+  
   hasPermission: (user: User | null, permission: Permission): boolean => {
       if (!user || !user.effectivePermissions) return false;
       return user.effectivePermissions.includes('*') || user.effectivePermissions.includes(permission);
   },
+
+  // --- AUDIT LOGS ---
   getAuditLogs: async (): Promise<AuditLog[]> => {
       const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
       const snap = await getDocs(q);
@@ -113,6 +125,8 @@ export const StorageService = {
           action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category
       });
   },
+
+  // --- DICTIONARY ---
   getWords: async (): Promise<Word[]> => {
       const snap = await getDocs(collection(db, 'words'));
       return mapDocs<Word>(snap);
@@ -127,6 +141,8 @@ export const StorageService = {
   saveWordTranslation: async (wt: WordTranslation) => {
       await setDoc(doc(db, 'word_translations', wt.id), wt);
   },
+
+  // --- COMMUNITY ---
   getAnnouncements: async (): Promise<Announcement[]> => {
       const q = query(collection(db, 'announcements'), orderBy('date', 'desc'));
       const snap = await getDocs(q);
@@ -143,6 +159,8 @@ export const StorageService = {
   saveForumTopic: async (t: ForumTopic) => {
       await setDoc(doc(db, 'forum_topics', t.id), t);
   },
+
+  // --- SETTINGS ---
   getSystemSettings: async (): Promise<SystemSettings> => {
       const docRef = doc(db, 'system_settings', 'global');
       const snap = await getDoc(docRef);
@@ -152,10 +170,13 @@ export const StorageService = {
   saveSystemSettings: async (s: SystemSettings) => {
       await setDoc(doc(db, 'system_settings', 'global'), s);
   },
+
+  // --- USERS & AUTH ---
   getAllUsers: async (): Promise<User[]> => {
       const snap = await getDocs(collection(db, 'users'));
       return mapDocs<User>(snap);
   },
+  
   getCurrentUser: (): User | null => {
       const u = auth.currentUser;
       if (!u) return null;
@@ -167,44 +188,111 @@ export const StorageService = {
           isActive: true
       };
   },
+
   login: async (email: string, password: string) => {
       try {
           const userCred = await signInWithEmailAndPassword(auth, email, password);
           const userDocRef = doc(db, 'users', userCred.user.uid);
           const userDocSnap = await getDoc(userDocRef);
+
           let userData: User;
+
+          // SUPER ADMIN CHECK
           if (email.toLowerCase() === 'brime.olewale@gmail.com') {
-              userData = { id: userCred.user.uid, name: 'Brime Olewale', email: email, role: 'admin', isActive: true, groupIds: ['g-admin'], effectivePermissions: ['*'] };
+              userData = {
+                  id: userCred.user.uid,
+                  name: 'Brime Olewale',
+                  email: email,
+                  role: 'admin',
+                  isActive: true,
+                  isVerified: true, // Auto-verify super admin
+                  groupIds: ['g-admin'],
+                  effectivePermissions: ['*'] 
+              };
               await setDoc(userDocRef, userData, { merge: true });
           } else if (userDocSnap.exists()) {
               userData = userDocSnap.data() as User;
           } else {
-              return { success: false, message: 'User profile missing. Please register.' };
+              // Edge case: User exists in Auth but not in Firestore
+              return { success: false, message: 'User profile missing. Please contact support.' };
           }
-          if (userData.isActive === false) return { success: false, message: 'Account deactivated' };
+
+          // --- ENFORCE CHECKS ---
+          if (userData.isActive === false) {
+              await signOut(auth);
+              return { success: false, message: 'Account deactivated by admin.' };
+          }
+
+          if (!userData.isVerified && userData.role !== 'admin') {
+              await signOut(auth);
+              return { success: false, message: 'Email not verified. Please check your inbox.' };
+          }
+
           return { success: true, user: userData };
       } catch (e: any) {
-          return { success: false, message: e.message || 'Login failed' };
+          let msg = 'Login failed';
+          if (e.code === 'auth/invalid-credential') msg = 'Invalid email or password.';
+          return { success: false, message: msg };
       }
   },
+
   register: async (email: string, password: string, name: string) => {
       try {
           const userCred = await createUserWithEmailAndPassword(auth, email, password);
-          const newUser: User = { id: userCred.user.uid, name, email, role: 'translator', isActive: true, groupIds: ['g-trans'] };
+          const newUser: User = {
+              id: userCred.user.uid,
+              name,
+              email,
+              role: 'translator',
+              isActive: true,
+              isVerified: false, // FORCE VERIFICATION
+              groupIds: ['g-trans']
+          };
+          // Create profile in Firestore
           await setDoc(doc(db, 'users', newUser.id), newUser);
-          return { success: true, token: userCred.user.uid };
+          // Sign out immediately so they can't use the app until verified
+          await signOut(auth);
+          return { success: true, token: userCred.user.uid }; 
       } catch (e: any) {
-          return { success: false, message: e.message || 'Registration failed' };
+          let msg = 'Registration failed';
+          if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
+          return { success: false, message: msg };
       }
   },
-  logout: async () => { await signOut(auth); },
-  verifyEmail: async (_token: string) => { return { success: true, message: 'Email verified (Simulated)' }; },
-  updateUser: async (u: User) => { await updateDoc(doc(db, 'users', u.id), { ...u }); },
+
+  logout: async () => {
+      await signOut(auth);
+  },
+
+  verifyEmail: async (token: string) => {
+      try {
+          // Update Firestore user to set isVerified: true
+          const userDocRef = doc(db, 'users', token);
+          const snap = await getDoc(userDocRef);
+          if (snap.exists()) {
+              await updateDoc(userDocRef, { isVerified: true });
+              return { success: true, message: 'Email verified successfully.' };
+          } else {
+              return { success: false, message: 'User not found.' };
+          }
+      } catch (e) {
+          console.error("Verification Error", e);
+          return { success: false, message: 'Verification failed.' };
+      }
+  },
+
+  updateUser: async (u: User) => {
+      await updateDoc(doc(db, 'users', u.id), { ...u });
+  },
+
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
       console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
       alert("Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'.");
   },
+
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
-  clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); }
+  clearAll: async () => {
+      console.warn("Clear All disabled in Cloud Mode for safety");
+  }
 };

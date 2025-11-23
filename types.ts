@@ -1,3 +1,4 @@
+
 export interface Sentence {
   id: number;
   english: string;
@@ -12,7 +13,7 @@ export interface TranslationHistoryEntry {
   details?: {
     oldText?: string;
     newText?: string;
-    feedback?: string | null; // Updated to allow null
+    feedback?: string | null;
   };
 }
 
@@ -37,7 +38,7 @@ export interface Translation {
   status: 'pending' | 'approved' | 'rejected';
   reviewedBy?: string;
   reviewedAt?: number;
-  feedback?: string | null; // Updated to allow null for DB compatibility
+  feedback?: string | null;
   history?: TranslationHistoryEntry[];
   comments?: Comment[];
   aiQualityScore?: number;
@@ -79,6 +80,7 @@ export interface User {
   role: 'admin' | 'translator' | 'reviewer' | 'guest';
   email: string;
   isActive?: boolean;
+  isVerified?: boolean; // NEW FIELD
   groupIds?: string[];
   effectivePermissions?: Permission[];
 }

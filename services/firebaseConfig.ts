@@ -1,3 +1,4 @@
+
 // @ts-ignore
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
@@ -34,5 +35,6 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+// @ts-ignore
 export const auth = getAuth(app);
 export const db = getFirestore(app);

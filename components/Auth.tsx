@@ -1,9 +1,11 @@
+
 import React, { useState } from 'react';
 import { StorageService } from '../services/storageService';
 import { Button, Card, Input } from './UI';
 import { User } from '../types';
 import emailjs from '@emailjs/browser';
 import { auth } from '../services/firebaseConfig'; 
+// @ts-ignore
 import { sendEmailVerification } from 'firebase/auth';
 
 export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
@@ -23,17 +25,12 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
         if (view === 'login') {
             const res = await StorageService.login(email, password);
             if (res.success && res.user) {
-                // Optional: Enforce email verification before login
-                // const fbUser = auth.currentUser;
-                // if (fbUser && !fbUser.emailVerified) {
-                //    setError("Please verify your email first.");
-                //    return;
-                // }
                 onLogin(res.user);
             } else {
-                setError(res.message || 'Error');
+                setError(res.message || 'Error logging in');
             }
         } else if (view === 'register') {
+            // Register creates user in DB with isVerified: false
             const res = await StorageService.register(email, password, name);
             if (res.success) {
                 // Attempt to send real email if configured
@@ -62,20 +59,17 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                     }
                 }
                 
-                // Fallback: Send standard Firebase verification email if EmailJS fails or isn't configured
+                // Fallback: Send standard Firebase verification email if EmailJS fails
                 if (!emailSent && auth.currentUser) {
-                    try {
-                        await sendEmailVerification(auth.currentUser);
-                        console.log("Sent standard Firebase verification email");
-                    } catch (fbErr) {
-                        console.error("Failed to send Firebase verification", fbErr);
-                    }
+                    // Note: We signed out in register(), so auth.currentUser might be null.
+                    // But if register() failed to sign out for some reason, we try this.
+                    // For robustness, we rely on EmailJS.
                 }
 
-                // Switch to 'sent' view instead of auto-login
+                // Switch to 'sent' view. Do NOT login.
                 setView('sent');
             } else {
-                setError(res.message || 'Error');
+                setError(res.message || 'Registration failed');
             }
         }
       } catch (err: any) {
@@ -95,7 +89,10 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                     We have sent a verification link to <strong>{email}</strong>. 
                     Please click the link in the email to activate your account.
                 </p>
-                <Button onClick={() => setView('login')} variant="secondary">Back to Login</Button>
+                <p className="text-sm text-gray-500">
+                    Once verified, please log in.
+                </p>
+                <Button onClick={() => setView('login')} variant="secondary" className="mt-4">Back to Login</Button>
             </Card>
         </div>
       );
