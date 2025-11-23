@@ -64,82 +64,111 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
       return wordTranslations.filter(wt => wt.wordId === word.id && wt.languageCode === targetLanguage.code);
   };
 
-  if (!sentence) return <div>No sentences loaded.</div>;
+  if (!sentence) return <div className="text-center py-20 text-slate-400">Loading data...</div>;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-24 sm:pb-10">
+    <div className="max-w-3xl mx-auto space-y-8 pb-24">
+       
        {/* Navigation Header */}
-       <div className="flex justify-between items-center sticky top-16 z-20 bg-gray-50 py-2 -mx-4 px-4 sm:static sm:bg-transparent sm:p-0 sm:mx-0">
+       <div className="flex justify-between items-center sticky top-16 lg:top-20 z-30 bg-slate-50/95 backdrop-blur py-3 -mx-4 px-4 sm:static sm:bg-transparent sm:p-0 sm:mx-0 border-b border-slate-200 sm:border-0">
           <div className="flex gap-2 items-center">
-              <Button variant="secondary" size="sm" onClick={handlePrev} disabled={index === 0}>←</Button>
-              <span className="text-gray-500 font-medium text-sm">{index + 1} / {sentences.length}</span>
-              <Button variant="secondary" size="sm" onClick={handleNext} disabled={index === sentences.length - 1}>→</Button>
+              <button onClick={handlePrev} disabled={index === 0} className="p-2 rounded-full hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all">
+                  <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <span className="text-slate-500 font-semibold text-sm bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">{index + 1} / {sentences.length}</span>
+              <button onClick={handleNext} disabled={index === sentences.length - 1} className="p-2 rounded-full hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all">
+                  <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              </button>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setIsNavOpen(true)}>Browse All</Button>
        </div>
 
-       {/* Sentence Display */}
-       <Card className="border-t-4 border-t-brand-500">
-          <div className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Translate to {targetLanguage.name}</div>
-          <div className="text-xl sm:text-2xl font-medium leading-relaxed text-gray-900">
+       {/* ENGLISH SOURCE CARD */}
+       <Card className="!p-8 !rounded-3xl border-l-8 border-l-teal-500 shadow-xl shadow-teal-900/5">
+          <div className="text-teal-600 text-xs font-extrabold uppercase tracking-widest mb-4">Translate to {targetLanguage.name}</div>
+          <div className="text-2xl sm:text-4xl font-bold leading-tight text-slate-800">
              {sentence.english.split(' ').map((w, i) => (
-                <span key={i} onClick={() => setSelectedWord({t: w, n: w.toLowerCase().replace(/[^a-z]/g, '')})} className="cursor-pointer hover:text-brand-600 hover:bg-brand-50 rounded px-0.5 transition-colors active:bg-brand-100">
+                <span key={i} onClick={() => setSelectedWord({t: w, n: w.toLowerCase().replace(/[^a-z]/g, '')})} className="cursor-pointer hover:text-teal-500 hover:bg-teal-50 rounded-lg px-1 transition-all active:scale-95 inline-block">
                    {w}{' '}
                 </span>
              ))}
           </div>
        </Card>
 
-       {/* My Translation Input */}
-       <div className="space-y-3 pt-2">
-         <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide">Your Translation</h3>
-         <Card className={`border-2 transition-shadow ${text ? 'border-brand-200 shadow-md' : 'border-gray-200'}`}>
+       {/* INPUT CARD */}
+       <div className="relative group">
+         <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-400 to-teal-500 rounded-3xl opacity-20 group-hover:opacity-40 transition duration-500 blur"></div>
+         <div className="relative bg-white rounded-2xl p-6 border border-slate-100">
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Your Translation</label>
             <textarea 
-              className="w-full border-0 focus:ring-0 p-0 resize-none text-lg sm:text-xl mb-4 placeholder-gray-300 min-h-[100px]" 
+              className="w-full border-0 focus:ring-0 p-0 resize-none text-xl sm:text-2xl text-slate-700 placeholder-slate-300 min-h-[120px] bg-transparent" 
               rows={3} 
-              placeholder="Type Hula translation here..." 
+              placeholder="Type here..." 
               value={text} 
               onChange={e => setText(e.target.value)} 
             />
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 border-t border-gray-100 pt-4">
-               <Button variant="ghost" onClick={handleAi} className="text-brand-600 text-xs w-full sm:w-auto">✨ AI Suggestion</Button>
-               <div className="flex gap-2 items-center w-full sm:w-auto">
-                 {myTranslation && <span className="text-xs text-gray-400 hidden sm:inline uppercase font-bold tracking-wider">{myTranslation.status}</span>}
-                 <Button onClick={handleSave} fullWidth>
-                    {myTranslation ? 'Update' : 'Submit'}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-t border-slate-100 pt-4 mt-2">
+               <Button variant="ghost" onClick={handleAi} className="!text-purple-600 hover:!bg-purple-50 w-full sm:w-auto flex gap-2">
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                   AI Suggest
+               </Button>
+               <div className="flex gap-3 items-center w-full sm:w-auto">
+                 {myTranslation && <span className="text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">{myTranslation.status}</span>}
+                 <Button onClick={handleSave} fullWidth size="lg" className="shadow-lg shadow-teal-500/30">
+                    {myTranslation ? 'Update Translation' : 'Submit Translation'}
                  </Button>
                </div>
             </div>
-         </Card>
+         </div>
        </div>
 
-       {/* Community Translations */}
-       <div className="space-y-4">
-         {communityTranslations.length > 0 && <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide mt-6">Community Contributions</h3>}
+       {/* COMMUNITY TRANSLATIONS */}
+       <div className="space-y-4 pt-6">
+         {communityTranslations.length > 0 && (
+             <div className="flex items-center gap-4 mb-4">
+                 <div className="h-px bg-slate-200 flex-1"></div>
+                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Community</span>
+                 <div className="h-px bg-slate-200 flex-1"></div>
+             </div>
+         )}
          {communityTranslations.map(t => {
             const voteStatus = t.voteHistory?.[user.id];
             return (
-              <Card key={t.id} className="bg-gray-50 border-gray-200">
+              <Card key={t.id} className="!bg-slate-50/50 !border-slate-200">
                  <div className="flex justify-between items-start gap-4">
                     <div className="flex-1">
-                       <div className="text-lg text-gray-900 mb-1">{t.text}</div>
-                       <div className="text-xs text-gray-500 flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{getUserName(t.translatorId)}</span>
-                          <span>•</span>
-                          <span>{new Date(t.timestamp).toLocaleDateString()}</span>
+                       <div className="text-lg font-medium text-slate-700 mb-2">{t.text}</div>
+                       <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
+                                  {getUserName(t.translatorId).substring(0,1).toUpperCase()}
+                              </div>
+                              <span className="text-xs font-semibold text-slate-500">{getUserName(t.translatorId)}</span>
+                          </div>
+                          <span className="text-xs text-slate-300">•</span>
+                          <span className="text-xs text-slate-400">{new Date(t.timestamp).toLocaleDateString()}</span>
                           {t.status === 'approved' && <Badge color="green">Approved</Badge>}
                        </div>
                     </div>
-                    <div className="flex flex-col items-center bg-white rounded border p-1 shadow-sm">
-                       <button onClick={() => onVote(t.id, 'up')} className={`p-1 ${voteStatus === 'up' ? 'text-green-600' : 'text-gray-400'}`}>▲</button>
-                       <span className={`text-sm font-bold ${t.votes > 0 ? 'text-green-600' : 'text-gray-600'}`}>{t.votes}</span>
-                       <button onClick={() => onVote(t.id, 'down')} className={`p-1 ${voteStatus === 'down' ? 'text-red-600' : 'text-gray-400'}`}>▼</button>
+                    <div className="flex flex-col items-center bg-white rounded-xl border border-slate-100 shadow-sm p-1">
+                       <button onClick={() => onVote(t.id, 'up')} className={`p-1.5 rounded-lg transition-colors ${voteStatus === 'up' ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
+                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" /></svg>
+                       </button>
+                       <span className={`text-xs font-bold py-1 ${t.votes > 0 ? 'text-emerald-600' : 'text-slate-600'}`}>{t.votes}</span>
+                       <button onClick={() => onVote(t.id, 'down')} className={`p-1.5 rounded-lg transition-colors ${voteStatus === 'down' ? 'text-rose-500 bg-rose-50' : 'text-slate-400 hover:bg-slate-50'}`}>
+                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                       </button>
                     </div>
                  </div>
-                 <div className="mt-3 pt-2 border-t border-gray-200">
-                     <div className="flex gap-2">
-                         <input type="text" placeholder="Reply..." className="flex-1 text-sm border rounded px-3 py-2" onKeyDown={(e) => { if (e.key === 'Enter') { onAddComment(t.id, e.currentTarget.value); e.currentTarget.value = ''; }}} />
-                         <button className="text-xs text-brand-600" onClick={() => setHistoryModalTranslation(t)}>History</button>
+                 <div className="mt-4 pt-3 border-t border-slate-200/60">
+                     <div className="flex gap-3">
+                         <input 
+                            type="text" 
+                            placeholder="Add a comment..." 
+                            className="flex-1 text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all" 
+                            onKeyDown={(e) => { if (e.key === 'Enter') { onAddComment(t.id, e.currentTarget.value); e.currentTarget.value = ''; }}} 
+                         />
+                         <Button size="sm" variant="ghost" onClick={() => setHistoryModalTranslation(t)}>History</Button>
                      </div>
                  </div>
               </Card>
@@ -147,10 +176,10 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
          })}
        </div>
 
-       {/* Sticky Mobile Action Footer for quick navigation */}
-       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex justify-between gap-3 sm:hidden z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-            <Button variant="secondary" fullWidth onClick={handlePrev} disabled={index === 0}>Previous</Button>
-            <Button variant="primary" fullWidth onClick={handleNext} disabled={index === sentences.length - 1}>Next / Skip</Button>
+       {/* STICKY FOOTER (Mobile) */}
+       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-lg border-t border-slate-200 flex justify-between gap-4 sm:hidden z-50">
+            <Button variant="secondary" fullWidth onClick={handlePrev} disabled={index === 0}>Prev</Button>
+            <Button variant="primary" fullWidth onClick={handleNext} disabled={index === sentences.length - 1}>Next</Button>
        </div>
 
        {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={getExistingTranslations(selectedWord.n)} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, sentence.id); setSelectedWord(null); }} />}

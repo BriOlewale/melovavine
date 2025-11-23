@@ -20,51 +20,70 @@ export const Header: React.FC<HeaderProps> = ({ user, onNavigate, onSwitchRole, 
       setIsMenuOpen(false);
   }
 
+  // Helper for active/inactive nav link styles
+  const NavItem = ({ label, page, badge }: { label: string, page: string, badge?: number }) => (
+      <button 
+        onClick={() => handleNav(page)} 
+        className="relative px-4 py-2 rounded-full text-sm font-semibold text-slate-600 hover:text-teal-600 hover:bg-teal-50 transition-all duration-200 group"
+      >
+        {label}
+        {badge ? (
+           <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center bg-rose-500 text-white text-[10px] font-bold rounded-full shadow-sm">{badge}</span>
+        ) : null}
+      </button>
+  );
+
   return (
-    <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-200">
+    <nav className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-slate-200/60 supports-[backdrop-filter]:bg-white/60">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-            <div className="flex items-center cursor-pointer" onClick={() => handleNav('dashboard')}>
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-teal-300 via-cyan-400 to-blue-500 flex items-center justify-center mr-2 text-white font-bold text-xs shadow-sm">VV</div>
-                <span className="font-bold text-xl text-gray-900">Va Vanagi</span>
+        <div className="flex justify-between h-16 lg:h-20 items-center">
+            
+            {/* LOGO AREA */}
+            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => handleNav('dashboard')}>
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-400 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-cyan-500/20 transform group-hover:scale-105 transition-transform duration-300">
+                    VV
+                </div>
+                <span className="font-bold text-xl tracking-tight text-slate-900 group-hover:text-teal-600 transition-colors">Va Vanagi</span>
             </div>
 
-            {/* Desktop Menu */}
-            <div className="hidden md:flex items-center space-x-1">
-                <button onClick={() => handleNav('dashboard')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Dashboard</button>
-                <button onClick={() => handleNav('community')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Community</button>
+            {/* DESKTOP MENU */}
+            <div className="hidden md:flex items-center gap-1">
+                <NavItem label="Dashboard" page="dashboard" />
+                <NavItem label="Community" page="community" />
                 
-                {user?.role !== 'guest' && <button onClick={() => handleNav('translate')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Translate</button>}
+                {user?.role !== 'guest' && <NavItem label="Translate" page="translate" />}
                 
-                <button onClick={() => handleNav('corpus')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Browse</button>
-                <button onClick={() => handleNav('dictionary')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Dictionary</button>
-                <button onClick={() => handleNav('leaderboard')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Leaderboard</button>
+                <NavItem label="Browse" page="corpus" />
+                <NavItem label="Dictionary" page="dictionary" />
+                <NavItem label="Leaderboard" page="leaderboard" />
                 
-                {canReview && <button onClick={() => handleNav('review')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Review {pendingReviewCount > 0 && <span className="ml-1 bg-amber-100 text-amber-800 text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingReviewCount}</span>}</button>}
-                {canAdmin && <button onClick={() => handleNav('admin')} className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 transition-colors">Admin</button>}
+                {canReview && <NavItem label="Review" page="review" badge={pendingReviewCount > 0 ? pendingReviewCount : undefined} />}
+                {canAdmin && <NavItem label="Admin" page="admin" />}
                 
-                <div className="pl-2 ml-2 border-l border-gray-200">
-                    <Button onClick={onSwitchRole} variant="secondary" size="sm">Sign Out</Button>
+                <div className="pl-4 ml-2 border-l border-slate-200">
+                    <Button onClick={onSwitchRole} variant="ghost" size="sm" className="!text-slate-500 hover:!text-rose-500">
+                        Sign Out
+                    </Button>
                 </div>
             </div>
 
-            {/* Mobile Hamburger Button */}
+            {/* MOBILE MENU BUTTON */}
             <div className="flex items-center md:hidden">
-                <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none">
+                <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors">
                     {isMenuOpen ? (
-                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                     ) : (
-                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
                     )}
                 </button>
             </div>
         </div>
       </div>
 
-      {/* Mobile Menu Overlay */}
+      {/* MOBILE DRAWER */}
       {isMenuOpen && (
-          <div className="md:hidden bg-white border-t border-gray-100 absolute w-full left-0 shadow-lg">
-              <div className="px-2 pt-2 pb-3 space-y-1">
+          <div className="md:hidden absolute w-full bg-white border-b border-slate-100 shadow-xl animate-in slide-in-from-top-2 duration-200">
+              <div className="px-4 pt-2 pb-6 space-y-2">
                   <MobileNavLink onClick={() => handleNav('dashboard')}>Dashboard</MobileNavLink>
                   <MobileNavLink onClick={() => handleNav('community')}>Community</MobileNavLink>
                   {user?.role !== 'guest' && <MobileNavLink onClick={() => handleNav('translate')}>Translate</MobileNavLink>}
@@ -73,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({ user, onNavigate, onSwitchRole, 
                   <MobileNavLink onClick={() => handleNav('leaderboard')}>Leaderboard</MobileNavLink>
                   {canReview && <MobileNavLink onClick={() => handleNav('review')}>Review {pendingReviewCount > 0 && `(${pendingReviewCount})`}</MobileNavLink>}
                   {canAdmin && <MobileNavLink onClick={() => handleNav('admin')}>Admin</MobileNavLink>}
-                  <div className="pt-4 pb-2 px-3">
+                  <div className="pt-4 mt-4 border-t border-slate-100">
                     <Button onClick={onSwitchRole} variant="secondary" fullWidth>Sign Out</Button>
                   </div>
               </div>
@@ -84,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({ user, onNavigate, onSwitchRole, 
 };
 
 const MobileNavLink: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
-    <button onClick={onClick} className="block w-full text-left px-3 py-4 rounded-xl text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-600 active:bg-brand-50 transition-colors">
+    <button onClick={onClick} className="block w-full text-left px-4 py-3.5 rounded-xl text-base font-semibold text-slate-600 hover:bg-teal-50 hover:text-teal-700 active:bg-teal-100 transition-colors">
         {children}
     </button>
 );
