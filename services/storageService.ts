@@ -1,4 +1,3 @@
-
 import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
@@ -7,9 +6,6 @@ import {
 // @ts-ignore
 import { 
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
-} from 'firebase/auth';
-import { 
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut 
 } from 'firebase/auth';
 
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
@@ -27,11 +23,15 @@ export const ALL_PERMISSIONS: Permission[] = [
     'dictionary.manage', 'data.import', 'data.export', 'audit.view', 'community.manage', 'system.manage'
 ];
 
+// Helper to convert firestore snapshot to array
 const mapDocs = <T>(snapshot: any): T[] => snapshot.docs.map((d: any) => ({ ...d.data(), id: d.id }));
 
 export const StorageService = {
   // --- SENTENCES ---
   getSentences: async (): Promise<Sentence[]> => {
+    // Warning: Fetching 50k docs at once is heavy. Ideally paginate this in future.
+    // For now, we limit to 1000 on initial load to prevent freezing, 
+    // relying on the Navigator or search to find specific ones if needed.
     const q = query(collection(db, 'sentences'), limit(2000)); 
     const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as Sentence); 
@@ -39,7 +39,7 @@ export const StorageService = {
   
   // UPDATED BATCH UPLOAD WITH PROGRESS
   saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
-    const CHUNK_SIZE = 450;
+    const CHUNK_SIZE = 450; // Firestore batch limit is 500
     for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
         const chunk = sentences.slice(i, i + CHUNK_SIZE);
         const batch = writeBatch(db);
@@ -51,6 +51,7 @@ export const StorageService = {
         });
         await batch.commit();
         if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
+        // Small delay to prevent rate limiting
         await new Promise(r => setTimeout(r, 200));
     }
   },
@@ -72,6 +73,7 @@ export const StorageService = {
       const snap = await getDocs(collection(db, 'projects'));
       const projects = mapDocs<Project>(snap);
       if (projects.length === 0) {
+          // Return default if empty
           return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
       }
       return projects;
@@ -85,6 +87,7 @@ export const StorageService = {
       const snap = await getDocs(collection(db, 'user_groups'));
       const groups = mapDocs<UserGroup>(snap);
       if (groups.length === 0) {
+          // Default groups if DB is fresh
           return [
               { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
               { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
@@ -184,7 +187,7 @@ export const StorageService = {
           id: u.uid,
           name: u.displayName || 'User',
           email: u.email || '',
-          role: 'guest', 
+          role: 'guest', // Basic role, actual permissions loaded in App
           isActive: true
       };
   },
@@ -192,6 +195,8 @@ export const StorageService = {
   login: async (email: string, password: string) => {
       try {
           const userCred = await signInWithEmailAndPassword(auth, email, password);
+          
+          // Check if user exists in 'users' collection, if not (or if super admin), create/update
           const userDocRef = doc(db, 'users', userCred.user.uid);
           const userDocSnap = await getDoc(userDocRef);
 
@@ -286,13 +291,18 @@ export const StorageService = {
   },
 
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
+      // Firebase Admin SDK is required to change other users' passwords server-side.
+      // Client-side SDK cannot change another user's password directly.
+      // This would require a Cloud Function.
       console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
       alert("Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'.");
   },
 
+  // Helpers for legacy compatibility
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
   clearAll: async () => {
+      // Careful with this in cloud!
       console.warn("Clear All disabled in Cloud Mode for safety");
   }
 };
