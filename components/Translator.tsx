@@ -6,7 +6,7 @@ import { WordDefinitionModal } from './WordDefinitionModal';
 import { StorageService } from '../services/storageService';
 
 interface TranslatorProps {
-  sentences: Sentence[]; // Kept in interface for type compatibility if passed from parent, but removed from destructuring if unused
+  sentences: Sentence[]; 
   translations: Translation[];
   user: User;
   users?: User[];
@@ -19,7 +19,6 @@ interface TranslatorProps {
   onVote: (id: string, type: 'up' | 'down') => void;
 }
 
-// Removed 'sentences' from destructuring since it's not used in this component logic
 export const Translator: React.FC<TranslatorProps> = ({ translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote }) => {
   const [currentTask, setCurrentTask] = useState<Sentence | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,7 +33,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
   const SESSION_GOAL = 10;
 
   // Find existing translation for the current task by THIS user
-  // We look into the 'translations' prop which App.tsx keeps updated
   const sentenceTranslations = translations.filter(t => t.sentenceId === currentTask?.id && t.languageCode === targetLanguage.code);
   const myTranslation = sentenceTranslations.find(t => t.translatorId === user.id);
   const communityTranslations = sentenceTranslations.filter(t => t.translatorId !== user.id).sort((a, b) => b.votes - a.votes);
@@ -46,14 +44,11 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
       };
   }, []);
 
-  // Update text field when task or myTranslation changes
   useEffect(() => {
       if (myTranslation) {
           setText(myTranslation.text);
       } else if (currentTask && !myTranslation) {
-          // Only clear text if we switched tasks and don't have a translation yet
-          // We don't want to clear if user is just typing
-          // Note: logic simplified, usually we clear on loadNextTask
+         // Logic to clear text is handled in loadNextTask
       }
   }, [myTranslation, currentTask]);
 
@@ -66,6 +61,10 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
           let task: Sentence | null = null;
           let attempts = 0;
           
+          // Get list of IDs user has already translated from the loaded translations prop
+          // This acts as a client-side cache of "Done" items
+          const myDoneIds = new Set(translations.filter(t => t.translatorId === user.id).map(t => t.sentenceId));
+          
           while (attempts < 5) {
               if (attempts === 0) {
                   task = await StorageService.getSmartQueueTask(user);
@@ -76,7 +75,10 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
               
               if (!task) break; 
               
-              if (processedIds.current.has(task.id)) {
+              // Check if we processed it in this session OR if we ever translated it before
+              if (processedIds.current.has(task.id) || myDoneIds.has(task.id)) {
+                  // If we found a done task, add to processed so we don't fetch it again in loop
+                  processedIds.current.add(task.id);
                   task = null; 
               } else {
                   break; 
@@ -88,6 +90,8 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
 
           if (!task && count === 0) {
               setErrorMsg("Database is empty. Please go to Admin Panel > Data Import to upload sentences.");
+          } else if (!task && count > 0) {
+              // No open tasks found
           }
           setCurrentTask(task);
       } catch (e: any) {
@@ -110,8 +114,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
   const handleSave = async () => {
       if (!currentTask) return;
       
-      // ENFORCE 1 TRANSLATION PER USER:
-      // If 'myTranslation' exists, we use ITS ID. If not, we create a NEW ID.
       const translationId = myTranslation ? myTranslation.id : crypto.randomUUID();
 
       const translation: Translation = {
@@ -123,15 +125,12 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
           timestamp: Date.now(),
           votes: myTranslation?.votes || 0,
           voteHistory: myTranslation?.voteHistory || {},
-          status: 'pending' // Resets to pending on edit
+          status: 'pending'
       };
 
       setIsLoading(true);
       try {
-        // Save locally first to update UI instantly (handled by App.tsx prop function usually, but here we use service directly for queue logic)
-        // Actually, App.tsx listens to snapshots or we need to manually update.
-        // For the queue to work, we use StorageService directly.
-        onSaveTranslation(translation); // Update local App state
+        onSaveTranslation(translation); 
         await StorageService.submitTranslation(translation, user);
         
         processedIds.current.add(currentTask.id);
