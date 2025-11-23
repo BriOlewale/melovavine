@@ -26,6 +26,7 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   const [text, setText] = useState('');
   const [sessionCount, setSessionCount] = useState(0);
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null); // NEW: Track specific errors
   
   // Session goal (e.g., do 10 translations)
   const SESSION_GOAL = 10;
@@ -41,13 +42,25 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
 
   const loadNextTask = async () => {
       setIsLoading(true);
+      setErrorMsg(null);
       setText('');
       try {
           const task = await StorageService.getSmartQueueTask(user);
+          if (!task) {
+              // If no task returned, it's either empty queue or data issue
+              // We don't set errorMsg here, we let the "No more tasks" UI handle it
+              // But we verify if sentences exist at all
+              const count = await StorageService.getSentenceCount();
+              if (count === 0) setErrorMsg("Database is empty. Please import sentences in Admin Panel.");
+          }
           setCurrentTask(task);
-      } catch (e) {
+      } catch (e: any) {
           console.error("Failed to load task", e);
-          toast.error("Could not fetch a new task.");
+          if (e.message && e.message.includes("requires an index")) {
+              setErrorMsg("System Error: Firestore Index Missing. Please check console for the creation link.");
+          } else {
+              setErrorMsg("Could not fetch a new task. " + (e.message || "Unknown error"));
+          }
       } finally {
           setIsLoading(false);
       }
@@ -131,11 +144,23 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       </div>
   );
 
+  if (errorMsg) return (
+      <div className="max-w-lg mx-auto py-20 text-center">
+          <div className="text-5xl mb-4">⚠️</div>
+          <h2 className="text-xl font-bold text-red-600 mb-2">Connection Issue</h2>
+          <p className="text-slate-600 mb-6">{errorMsg}</p>
+          <Button onClick={loadNextTask}>Retry</Button>
+      </div>
+  );
+
   if (!currentTask) return (
       <div className="max-w-lg mx-auto py-20 text-center">
           <div className="text-6xl mb-4">🎉</div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">No more tasks available!</h2>
-          <p className="text-slate-500 mb-6">You've translated everything available in the queue for now. Check back later!</p>
+          <p className="text-slate-500 mb-6">
+              You've translated everything available in the queue for now. 
+              <br/><span className="text-xs text-slate-400">(Or check Admin Panel if data needs re-importing)</span>
+          </p>
           <Button onClick={() => window.location.reload()}>Refresh Queue</Button>
       </div>
   );
