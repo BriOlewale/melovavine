@@ -59,14 +59,14 @@ export const Leaderboard: React.FC<{ translations: Translation[], users: User[],
                {/* 2nd Place */}
                <div className="order-2 sm:order-1 w-full sm:w-1/3">
                    {stats[1] ? (
-                       <Card className="text-center h-56 flex flex-col justify-center items-center transform hover:-translate-y-1 transition-transform duration-300 border-slate-200">
-                           <div className="relative mb-3">
+                       <Card className="text-center h-64 flex flex-col justify-center items-center transform hover:-translate-y-1 transition-transform duration-300 border-slate-200 p-4">
+                           <div className="relative mb-3 flex-shrink-0">
                                <div className="text-3xl bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
                                    🥈
                                </div>
                                <div className="absolute -bottom-2 -right-1 bg-slate-700 text-white text-xs font-bold px-1.5 py-0.5 rounded-md">#2</div>
                            </div>
-                           <div className="font-bold text-lg text-slate-800 w-full px-2 line-clamp-1 mb-1" title={stats[1].name}>
+                           <div className="font-bold text-lg text-slate-900 w-full px-1 mb-2 break-words leading-tight min-h-[3rem] flex items-center justify-center">
                                {stats[1].name}
                            </div>
                            <div className="text-4xl font-black text-slate-400">
@@ -76,21 +76,21 @@ export const Leaderboard: React.FC<{ translations: Translation[], users: User[],
                                {metric === 'approved' ? 'Approved' : 'Votes'}
                            </div>
                        </Card>
-                   ) : <div className="h-56 hidden sm:block"></div>}
+                   ) : <div className="h-64 hidden sm:block"></div>}
                </div>
                
                {/* 1st Place */}
                <div className="order-1 sm:order-2 w-full sm:w-1/3 -mt-8">
                    {stats[0] && (
-                       <Card className="text-center h-64 flex flex-col justify-center items-center border-yellow-400 ring-4 ring-yellow-50 shadow-xl shadow-yellow-100 relative overflow-hidden z-10">
+                       <Card className="text-center h-72 flex flex-col justify-center items-center border-yellow-400 ring-4 ring-yellow-50 shadow-xl shadow-yellow-100 relative overflow-hidden z-10 p-4">
                            <div className="absolute top-0 left-0 w-full h-1.5 bg-yellow-400"></div>
-                           <div className="relative mb-4">
+                           <div className="relative mb-4 flex-shrink-0">
                                <div className="text-5xl bg-yellow-100 w-24 h-24 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
                                    👑
                                </div>
                                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-white text-xs font-bold px-2 py-0.5 rounded-md shadow-sm">#1</div>
                            </div>
-                           <div className="font-bold text-xl text-slate-900 w-full px-2 line-clamp-1 mb-1" title={stats[0].name}>
+                           <div className="font-bold text-xl text-slate-900 w-full px-1 mb-2 break-words leading-tight min-h-[3rem] flex items-center justify-center">
                                {stats[0].name}
                            </div>
                            <div className="text-5xl font-black text-yellow-500">
@@ -106,14 +106,14 @@ export const Leaderboard: React.FC<{ translations: Translation[], users: User[],
                {/* 3rd Place */}
                <div className="order-3 sm:order-3 w-full sm:w-1/3">
                    {stats[2] ? (
-                       <Card className="text-center h-48 flex flex-col justify-center items-center transform hover:-translate-y-1 transition-transform duration-300 border-slate-200">
-                            <div className="relative mb-3">
+                       <Card className="text-center h-56 flex flex-col justify-center items-center transform hover:-translate-y-1 transition-transform duration-300 border-slate-200 p-4">
+                            <div className="relative mb-3 flex-shrink-0">
                                <div className="text-2xl bg-orange-50 w-14 h-14 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
                                    🥉
                                </div>
                                <div className="absolute -bottom-2 -right-1 bg-orange-700 text-white text-xs font-bold px-1.5 py-0.5 rounded-md">#3</div>
                            </div>
-                           <div className="font-bold text-base text-slate-800 w-full px-2 line-clamp-1 mb-1" title={stats[2].name}>
+                           <div className="font-bold text-base text-slate-900 w-full px-1 mb-2 break-words leading-tight min-h-[3rem] flex items-center justify-center">
                                {stats[2].name}
                            </div>
                            <div className="text-3xl font-black text-orange-300">
@@ -123,7 +123,7 @@ export const Leaderboard: React.FC<{ translations: Translation[], users: User[],
                                {metric === 'approved' ? 'Approved' : 'Votes'}
                            </div>
                        </Card>
-                   ) : <div className="h-48 hidden sm:block"></div>}
+                   ) : <div className="h-56 hidden sm:block"></div>}
                </div>
            </div>
        )}
