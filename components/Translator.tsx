@@ -6,12 +6,12 @@ import { WordDefinitionModal } from './WordDefinitionModal';
 import { StorageService } from '../services/storageService';
 
 interface TranslatorProps {
-  sentences: Sentence[]; // We keep this for fallback/reference but won't iterate linearly
+  sentences: Sentence[]; 
   translations: Translation[];
   user: User;
   users?: User[];
   targetLanguage: Language;
-  onSaveTranslation: (t: Translation) => void; // Main App saves locally, but we will use StorageService.submit directly for queue logic
+  onSaveTranslation: (t: Translation) => void; 
   words: Word[];
   wordTranslations: WordTranslation[];
   onSaveWordTranslation: (wt: string, nt: string, t: string, n: string, id: number) => void;
@@ -20,21 +20,18 @@ interface TranslatorProps {
 }
 
 export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, words, wordTranslations, onSaveWordTranslation }) => {
-  // Session State
   const [currentTask, setCurrentTask] = useState<Sentence | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState('');
   const [sessionCount, setSessionCount] = useState(0);
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null); // NEW: Track specific errors
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [totalDbCount, setTotalDbCount] = useState(0); // New state to diagnose data issues
   
-  // Session goal (e.g., do 10 translations)
   const SESSION_GOAL = 10;
 
-  // Load next task on mount
   useEffect(() => {
       loadNextTask();
-      // Cleanup lock on unmount
       return () => {
           if (currentTask?.id) StorageService.unlockSentence(currentTask.id.toString());
       };
@@ -46,18 +43,22 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       setText('');
       try {
           const task = await StorageService.getSmartQueueTask(user);
+          const count = await StorageService.getSentenceCount();
+          setTotalDbCount(count);
+
           if (!task) {
-              // If no task returned, it's either empty queue or data issue
-              // We don't set errorMsg here, we let the "No more tasks" UI handle it
-              // But we verify if sentences exist at all
-              const count = await StorageService.getSentenceCount();
-              if (count === 0) setErrorMsg("Database is empty. Please import sentences in Admin Panel.");
+              if (count === 0) {
+                  setErrorMsg("Database is empty. Please go to Admin Panel > Data Import to upload sentences.");
+              } else {
+                  // Data exists but queue is empty -> Likely missing 'status' or 'priorityScore'
+                  // We don't set errorMsg here, we show a specific UI below
+              }
           }
           setCurrentTask(task);
       } catch (e: any) {
           console.error("Failed to load task", e);
           if (e.message && e.message.includes("requires an index")) {
-              setErrorMsg("System Error: Firestore Index Missing. Please check console for the creation link.");
+              setErrorMsg("System Error: Firestore Index Missing. Please check the browser console (F12) for the Google link to create it.");
           } else {
               setErrorMsg("Could not fetch a new task. " + (e.message || "Unknown error"));
           }
@@ -82,7 +83,6 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   const handleSave = async () => {
       if (!currentTask) return;
       
-      // Construct Translation Object
       const translation: Translation = {
           id: crypto.randomUUID(),
           sentenceId: currentTask.id,
@@ -97,13 +97,9 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
 
       setIsLoading(true);
       try {
-        // Use the smart submit which handles unlocking and stats
         await StorageService.submitTranslation(translation, user);
-        
         toast.success(getMotivation());
         setSessionCount(prev => prev + 1);
-        
-        // Load next
         await loadNextTask();
       } catch(e) {
         toast.error("Failed to save. Check your connection.");
@@ -154,13 +150,19 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   );
 
   if (!currentTask) return (
-      <div className="max-w-lg mx-auto py-20 text-center">
-          <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">No more tasks available!</h2>
-          <p className="text-slate-500 mb-6">
-              You've translated everything available in the queue for now. 
-              <br/><span className="text-xs text-slate-400">(Or check Admin Panel if data needs re-importing)</span>
-          </p>
+      <div className="max-w-lg mx-auto py-20 text-center bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+          <div className="text-6xl mb-4">🤔</div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">No active tasks found</h2>
+          
+          {totalDbCount > 0 ? (
+             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 my-6 text-left">
+                 <p className="text-sm text-amber-800 font-medium mb-1">Data exists ({totalDbCount} sentences), but the queue is empty.</p>
+                 <p className="text-xs text-amber-600">This happens when sentences are missing Priority Scores. An Admin needs to re-import the data to fix this.</p>
+             </div>
+          ) : (
+             <p className="text-slate-500 mb-6">You've translated everything available in the queue for now.</p>
+          )}
+
           <Button onClick={() => window.location.reload()}>Refresh Queue</Button>
       </div>
   );
@@ -169,15 +171,12 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-28">
-       
-       {/* Session Header */}
+       {/* ... (Same UI as before) ... */}
        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-20 z-30 bg-slate-50/95 backdrop-blur py-3 -mx-4 px-4 sm:static sm:bg-transparent sm:p-0 sm:mx-0">
           <div>
               <h2 className="text-lg font-bold text-slate-800">Translation Session</h2>
               <p className="text-xs text-slate-500">Task ID: #{currentTask.id}</p>
           </div>
-          
-          {/* Session Progress Bar */}
           <div className="w-full sm:w-64">
               <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
                   <span>Session Progress</span>
@@ -192,7 +191,6 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
           </div>
        </div>
 
-       {/* ENGLISH SOURCE CARD */}
        <div className="relative group">
            <div className="absolute -inset-0.5 bg-gradient-to-r from-brand-300 to-brand-500 rounded-[28px] opacity-30 blur transition duration-500 group-hover:opacity-50"></div>
            <Card className="relative !p-8 !rounded-3xl !border-0 !shadow-lg bg-white">
@@ -210,7 +208,6 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
            </Card>
        </div>
 
-       {/* INPUT CARD */}
        <Card className="!p-0 !rounded-3xl !overflow-hidden !border-2 !border-slate-100 focus-within:!border-brand-300 transition-colors">
             <div className="p-6 sm:p-8">
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Your Translation</label>
