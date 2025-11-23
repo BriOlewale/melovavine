@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Translation, User, Language } from '../types';
-import { Card, Button } from './UI';
+import { Card } from './UI'; // Removed Button
 
 export const Leaderboard: React.FC<{ translations: Translation[], users: User[], targetLanguage: Language }> = ({ translations, users, targetLanguage }) => {
   const [metric, setMetric] = useState<'approved' | 'votes'>('approved');
