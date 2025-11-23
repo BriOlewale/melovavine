@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserGroup, Project, AuditLog, Permission } from '../types';
+import { User, UserGroup, Project, AuditLog } from '../types'; // Removed unused 'Permission'
 import { Button, Card, Input, Modal, Badge } from './UI';
-import { StorageService } from '../services/storageService'; // Removed ALL_PERMISSIONS import if unused
+import { StorageService, ALL_PERMISSIONS } from '../services/storageService'; // Removed ALL_PERMISSIONS import if unused
 
+// Removed 'sentences' from Props because it wasn't being used
 export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImportSentences }) => {
   const [tab, setTab] = useState('users');
   const [isLoading, setIsLoading] = useState(false);
@@ -99,27 +100,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
       alert('Saved'); 
   };
 
-  // Unused handlers commented out to satisfy TS build
-  /*
-  const handleSaveGroup = async () => {
-      if (editingGroup) {
-          await StorageService.saveUserGroup(editingGroup);
-          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_GROUP', `Updated group: ${editingGroup.name}`);
-          setIsGroupModalOpen(false);
-          loadData();
-      }
-  };
-
-  const handleSaveProject = async () => {
-      if (editingProject) {
-          await StorageService.saveProject(editingProject);
-          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_PROJECT', `Updated project: ${editingProject.name}`);
-          setIsProjectModalOpen(false);
-          loadData();
-      }
-  };
-  */
-
   const handleUpdateUser = async () => {
       if (editingUser) {
           await StorageService.updateUser(editingUser);
@@ -136,17 +116,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
           setNewPassword('');
       }
   };
-
-  /*
-  const toggleGroupPermission = (perm: Permission) => {
-      if (!editingGroup) return;
-      const has = editingGroup.permissions.includes(perm);
-      const newPerms = has 
-          ? editingGroup.permissions.filter(p => p !== perm)
-          : [...editingGroup.permissions, perm];
-      setEditingGroup({ ...editingGroup, permissions: newPerms });
-  };
-  */
 
   const NavButton = ({ id, label }: { id: string, label: string }) => (
       <button 
@@ -268,9 +237,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               <div>
                  <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold">Groups & Permissions</h2>
-                    {/* Button disabled for now as handler is commented out to fix build
-                    <Button onClick={() => { setEditingGroup({ id: crypto.randomUUID(), name: '', permissions: [], description: '' }); setIsGroupModalOpen(true); }}>Create Group</Button>
-                    */}
                  </div>
                  <div className="grid gap-4">
                      {groups.map(g => (
@@ -280,7 +246,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                                     <h3 className="text-lg font-bold">{g.name}</h3>
                                     <p className="text-sm text-gray-500">{g.description}</p>
                                  </div>
-                                 {/* <Button variant="ghost" onClick={() => { setEditingGroup(g); setIsGroupModalOpen(true); }}>Edit</Button> */}
                              </div>
                              <div className="mt-2 flex flex-wrap gap-1">
                                  {g.permissions.includes('*') 
@@ -299,7 +264,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               <div>
                  <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold">Projects</h2>
-                    {/* <Button onClick={() => { setEditingProject({ id: crypto.randomUUID(), name: '', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }); setIsProjectModalOpen(true); }}>New Project</Button> */}
                  </div>
                  {/* Desktop Table */}
                  <div className="hidden md:block bg-white border rounded-lg overflow-hidden">
@@ -319,7 +283,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                                     <td className="px-6 py-4 uppercase">{p.targetLanguageCode}</td>
                                     <td className="px-6 py-4"><Badge color={p.status === 'active' ? 'green' : 'gray'}>{p.status}</Badge></td>
                                     <td className="px-6 py-4 text-right">
-                                        {/* <button onClick={() => { setEditingProject(p); setIsProjectModalOpen(true); }} className="text-brand-600 hover:underline">Edit</button> */}
                                     </td>
                                 </tr>
                             ))}
@@ -335,7 +298,6 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                                 <Badge color={p.status === 'active' ? 'green' : 'gray'}>{p.status}</Badge>
                             </div>
                             <div className="text-sm text-gray-500 mb-4">Language: {p.targetLanguageCode}</div>
-                            {/* <Button fullWidth variant="secondary" onClick={() => { setEditingProject(p); setIsProjectModalOpen(true); }}>Edit Project</Button> */}
                         </Card>
                     ))}
                  </div>
