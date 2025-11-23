@@ -28,9 +28,10 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [totalDbCount, setTotalDbCount] = useState(0); 
   
-  // NEW: Track skipped IDs locally to prevent re-serving them immediately
+  // NEW: Success state to show animation
+  const [showSuccess, setShowSuccess] = useState(false);
+
   const skippedIds = useRef<Set<number>>(new Set());
-  
   const SESSION_GOAL = 10;
 
   useEffect(() => {
@@ -44,51 +45,20 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       setIsLoading(true);
       setErrorMsg(null);
       setText('');
+      setShowSuccess(false); // Reset success state
       try {
-          // Pass the set of skipped IDs to the service (or filter client side if service doesn't support)
-          // Current service fetches a batch of 20. We need to find one that isn't skipped.
-          // Since we can't easily change the service signature safely without breaking other things, 
-          // we will call it, check if it's skipped, and if so, lock it briefly and try again (hacky) 
-          // OR better: modify StorageService to accept excluded IDs.
-          //
-          // Simpler approach for this fix: 
-          // We will modify getSmartQueueTask in StorageService to accept 'excludedIds'.
-          // But since I can't change StorageService signature in this step easily without potentially breaking App.tsx imports,
-          // I will implement a client-side retry loop here.
-          
           let task: Sentence | null = null;
           let attempts = 0;
           
           while (attempts < 5) {
               task = await StorageService.getSmartQueueTask(user);
-              
-              if (!task) break; // Queue empty
-              
+              if (!task) break; 
               if (skippedIds.current.has(task.id)) {
-                  // If we got a skipped task again, it means we need to 'soft lock' it so the query ignores it, 
-                  // or just manually unlock and try again? No, unlocking makes it available again.
-                  // We need to tell the backend "I don't want this".
-                  // Since we can't change backend easily right now, we will just accept it but force the user to see it? 
-                  // No, that's the bug.
-                  
-                  // WORKAROUND: We temporarily lock it for a short time so the NEXT query picks something else.
-                  // This isn't ideal but works without changing the interface.
-                  // Actually, let's just change the StorageService signature in the next file update.
-                  // For this file, let's assume StorageService is updated.
-                  
-                  // Wait, I can update StorageService in the next block.
-                  // So here, I will pass the excluded IDs.
-                  // But wait, `getSmartQueueTask` takes `user`. I can add `skippedIds` to the user object temporarily? No.
-                  
-                  // Let's rely on the updated StorageService I will provide next.
-                  // I will pass skippedIds as a second argument.
-                  
-                  // @ts-ignore - I will update the service definition next
+                   // @ts-ignore 
                   task = await StorageService.getSmartQueueTask(user, Array.from(skippedIds.current));
-                  
-                  if (task && !skippedIds.current.has(task.id)) break; // Found a good one
+                  if (task && !skippedIds.current.has(task.id)) break; 
               } else {
-                  break; // Found a fresh one
+                  break; 
               }
               attempts++;
           }
@@ -96,18 +66,16 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
           const count = await StorageService.getSentenceCount();
           setTotalDbCount(count);
 
-          if (!task) {
-              if (count === 0) {
-                  setErrorMsg("Database is empty. Please go to Admin Panel > Data Import to upload sentences.");
-              }
+          if (!task && count === 0) {
+              setErrorMsg("Database is empty. Please go to Admin Panel > Data Import to upload sentences.");
           }
           setCurrentTask(task);
       } catch (e: any) {
           console.error("Failed to load task", e);
           if (e.message && e.message.includes("requires an index")) {
-              setErrorMsg("System Error: Firestore Index Missing. Please check the browser console (F12) for the Google link to create it.");
+              setErrorMsg("System Error: Firestore Index Missing. Check console.");
           } else {
-              setErrorMsg("Could not fetch a new task. " + (e.message || "Unknown error"));
+              setErrorMsg("Could not fetch task.");
           }
       } finally {
           setIsLoading(false);
@@ -115,15 +83,7 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   };
 
   const getMotivation = () => {
-      const msgs = [
-          "Great job — that one makes a difference!",
-          "You’re on a roll! Keep it going.",
-          "Another translation completed — you’re helping preserve culture.",
-          "Fantastic work. You’re climbing the leaderboard!",
-          "Thanks for contributing — your effort matters.",
-          "Nice progress — every word brings us closer.",
-          "Well done! Ready for the next one?"
-      ];
+      const msgs = ["Great job!", "Keep going!", "Nice work!", "Fantastic!", "Well done!"];
       return msgs[Math.floor(Math.random() * msgs.length)];
   };
 
@@ -145,9 +105,17 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       setIsLoading(true);
       try {
         await StorageService.submitTranslation(translation, user);
-        toast.success(getMotivation());
+        
+        // VISUAL FEEDBACK
+        setShowSuccess(true); 
         setSessionCount(prev => prev + 1);
-        await loadNextTask();
+        toast.success(getMotivation());
+        
+        // Wait a moment to let the user see the success state before loading next
+        setTimeout(() => {
+            loadNextTask();
+        }, 1200);
+
       } catch(e) {
         toast.error("Failed to save. Check your connection.");
         setIsLoading(false);
@@ -156,21 +124,15 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   
   const handleSkip = async () => {
       if (!currentTask) return;
-      toast.info("Skipping task...");
-      
-      // 1. Add to local skip list
+      toast.info("Skipping...");
       skippedIds.current.add(currentTask.id);
-      
-      // 2. Unlock it in DB so others can take it
       await StorageService.unlockSentence(currentTask.id.toString());
-      
-      // 3. Load next
       await loadNextTask();
   };
 
   const handleAi = async () => {
       if (currentTask) {
-          toast.info("Asking AI for help...");
+          toast.info("Asking AI...");
           const suggestion = await getTranslationSuggestion(currentTask.english, targetLanguage);
           if(suggestion) setText(suggestion);
           else toast.error("AI request failed.");
@@ -182,6 +144,22 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       if (!word) return [];
       return wordTranslations.filter(wt => wt.wordId === word.id && wt.languageCode === targetLanguage.code);
   };
+
+  // SUCCESS STATE VIEW
+  if (showSuccess) return (
+      <div className="max-w-3xl mx-auto py-20 text-center animate-fade-in">
+          <div className="bg-white rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center shadow-lg shadow-emerald-100 border-4 border-emerald-50">
+              <svg className="w-12 h-12 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Translation Submitted!</h2>
+          <p className="text-slate-500">Loading next task...</p>
+          <div className="mt-8 w-64 mx-auto h-2 bg-slate-100 rounded-full overflow-hidden">
+               <div className="h-full bg-emerald-500 animate-[loading_1s_ease-in-out_infinite]"></div>
+          </div>
+      </div>
+  );
 
   if (isLoading) return (
       <div className="max-w-3xl mx-auto mt-10 space-y-6">
@@ -207,19 +185,7 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       <div className="max-w-lg mx-auto py-20 text-center bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
           <div className="text-6xl mb-4">🤔</div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">No active tasks found</h2>
-          
-          {totalDbCount > 0 ? (
-             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 my-6 text-left">
-                 <p className="text-sm text-amber-800 font-medium mb-1">Data exists ({totalDbCount} sentences), but the queue is empty.</p>
-                 <p className="text-xs text-amber-600">
-                    1. Check if you have skipped or translated all high-priority items.<br/>
-                    2. Admin: Re-import data to ensure priority scores are set.
-                 </p>
-             </div>
-          ) : (
-             <p className="text-slate-500 mb-6">You've translated everything available in the queue for now.</p>
-          )}
-
+          <p className="text-slate-500 mb-6">You've translated everything available in the queue for now.</p>
           <Button onClick={() => window.location.reload()}>Refresh Queue</Button>
       </div>
   );
@@ -228,21 +194,21 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-28">
-       
-       {/* Session Header */}
        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-20 z-30 bg-slate-50/95 backdrop-blur py-3 -mx-4 px-4 sm:static sm:bg-transparent sm:p-0 sm:mx-0">
           <div>
               <h2 className="text-lg font-bold text-slate-800">Translation Session</h2>
               <p className="text-xs text-slate-500">Task ID: #{currentTask.id}</p>
           </div>
+          
+          {/* Session Progress Bar */}
           <div className="w-full sm:w-64">
               <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
                   <span>Session Progress</span>
                   <span>{sessionCount} / {SESSION_GOAL}</span>
               </div>
-              <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
+              <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden relative">
                   <div 
-                    className="h-full bg-gradient-to-r from-brand-400 to-brand-500 transition-all duration-500 ease-out"
+                    className="h-full bg-gradient-to-r from-brand-400 to-brand-500 transition-all duration-500 ease-out absolute top-0 left-0"
                     style={{ width: `${progressPercentage}%` }}
                   ></div>
               </div>
