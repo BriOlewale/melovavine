@@ -20,13 +20,13 @@ interface TranslatorProps {
 }
 
 export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, words, wordTranslations, onSaveWordTranslation }) => {
+  // Session State
   const [currentTask, setCurrentTask] = useState<Sentence | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState('');
   const [sessionCount, setSessionCount] = useState(0);
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [totalDbCount, setTotalDbCount] = useState(0); 
   
   // NEW: Success state to show animation
   const [showSuccess, setShowSuccess] = useState(false);
@@ -64,7 +64,6 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
           }
 
           const count = await StorageService.getSentenceCount();
-          setTotalDbCount(count);
 
           if (!task && count === 0) {
               setErrorMsg("Database is empty. Please go to Admin Panel > Data Import to upload sentences.");
