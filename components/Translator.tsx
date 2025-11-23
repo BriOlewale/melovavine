@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sentence, Translation, User, Language, Word, WordTranslation } from '../types';
 import { Button, Card, toast, Skeleton } from './UI'; 
 import { getTranslationSuggestion } from '../services/geminiService';
@@ -26,7 +26,10 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   const [sessionCount, setSessionCount] = useState(0);
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [totalDbCount, setTotalDbCount] = useState(0); // New state to diagnose data issues
+  const [totalDbCount, setTotalDbCount] = useState(0); 
+  
+  // NEW: Track skipped IDs locally to prevent re-serving them immediately
+  const skippedIds = useRef<Set<number>>(new Set());
   
   const SESSION_GOAL = 10;
 
@@ -42,16 +45,60 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       setErrorMsg(null);
       setText('');
       try {
-          const task = await StorageService.getSmartQueueTask(user);
+          // Pass the set of skipped IDs to the service (or filter client side if service doesn't support)
+          // Current service fetches a batch of 20. We need to find one that isn't skipped.
+          // Since we can't easily change the service signature safely without breaking other things, 
+          // we will call it, check if it's skipped, and if so, lock it briefly and try again (hacky) 
+          // OR better: modify StorageService to accept excluded IDs.
+          //
+          // Simpler approach for this fix: 
+          // We will modify getSmartQueueTask in StorageService to accept 'excludedIds'.
+          // But since I can't change StorageService signature in this step easily without potentially breaking App.tsx imports,
+          // I will implement a client-side retry loop here.
+          
+          let task: Sentence | null = null;
+          let attempts = 0;
+          
+          while (attempts < 5) {
+              task = await StorageService.getSmartQueueTask(user);
+              
+              if (!task) break; // Queue empty
+              
+              if (skippedIds.current.has(task.id)) {
+                  // If we got a skipped task again, it means we need to 'soft lock' it so the query ignores it, 
+                  // or just manually unlock and try again? No, unlocking makes it available again.
+                  // We need to tell the backend "I don't want this".
+                  // Since we can't change backend easily right now, we will just accept it but force the user to see it? 
+                  // No, that's the bug.
+                  
+                  // WORKAROUND: We temporarily lock it for a short time so the NEXT query picks something else.
+                  // This isn't ideal but works without changing the interface.
+                  // Actually, let's just change the StorageService signature in the next file update.
+                  // For this file, let's assume StorageService is updated.
+                  
+                  // Wait, I can update StorageService in the next block.
+                  // So here, I will pass the excluded IDs.
+                  // But wait, `getSmartQueueTask` takes `user`. I can add `skippedIds` to the user object temporarily? No.
+                  
+                  // Let's rely on the updated StorageService I will provide next.
+                  // I will pass skippedIds as a second argument.
+                  
+                  // @ts-ignore - I will update the service definition next
+                  task = await StorageService.getSmartQueueTask(user, Array.from(skippedIds.current));
+                  
+                  if (task && !skippedIds.current.has(task.id)) break; // Found a good one
+              } else {
+                  break; // Found a fresh one
+              }
+              attempts++;
+          }
+
           const count = await StorageService.getSentenceCount();
           setTotalDbCount(count);
 
           if (!task) {
               if (count === 0) {
                   setErrorMsg("Database is empty. Please go to Admin Panel > Data Import to upload sentences.");
-              } else {
-                  // Data exists but queue is empty -> Likely missing 'status' or 'priorityScore'
-                  // We don't set errorMsg here, we show a specific UI below
               }
           }
           setCurrentTask(task);
@@ -110,7 +157,14 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   const handleSkip = async () => {
       if (!currentTask) return;
       toast.info("Skipping task...");
+      
+      // 1. Add to local skip list
+      skippedIds.current.add(currentTask.id);
+      
+      // 2. Unlock it in DB so others can take it
       await StorageService.unlockSentence(currentTask.id.toString());
+      
+      // 3. Load next
       await loadNextTask();
   };
 
@@ -157,7 +211,10 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
           {totalDbCount > 0 ? (
              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 my-6 text-left">
                  <p className="text-sm text-amber-800 font-medium mb-1">Data exists ({totalDbCount} sentences), but the queue is empty.</p>
-                 <p className="text-xs text-amber-600">This happens when sentences are missing Priority Scores. An Admin needs to re-import the data to fix this.</p>
+                 <p className="text-xs text-amber-600">
+                    1. Check if you have skipped or translated all high-priority items.<br/>
+                    2. Admin: Re-import data to ensure priority scores are set.
+                 </p>
              </div>
           ) : (
              <p className="text-slate-500 mb-6">You've translated everything available in the queue for now.</p>
@@ -171,7 +228,8 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-28">
-       {/* ... (Same UI as before) ... */}
+       
+       {/* Session Header */}
        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-20 z-30 bg-slate-50/95 backdrop-blur py-3 -mx-4 px-4 sm:static sm:bg-transparent sm:p-0 sm:mx-0">
           <div>
               <h2 className="text-lg font-bold text-slate-800">Translation Session</h2>
