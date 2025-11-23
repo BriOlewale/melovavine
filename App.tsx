@@ -116,9 +116,8 @@ const App: React.FC = () => {
 
   const handleNavigate = (page: string) => setCurrentPage(page);
 
-  const handleImportSentences = async (newSentences: Sentence[]) => { 
-      // Updated to support batching via StorageService directly or wrapped
-      setSentences(prev => [...prev, ...newSentences]); 
+  // FIXED: No longer expects arguments to prevent crash on large imports
+  const handleImportSentences = async () => { 
       window.location.reload(); 
   };
   
