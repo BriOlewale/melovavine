@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sentence, Translation, User, Language } from '../types';
-import { Button, Card, Badge } from './UI';
+import { Button, Card, Badge, toast, Skeleton, EmptyState } from './UI';
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
 
@@ -27,13 +27,13 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       setIsProcessing(true);
       try {
           await onReviewAction(id, status, feedback);
+          toast.success(status === 'approved' ? "Translation approved! 🎉" : "Translation rejected.");
       } catch (e: any) {
-          console.error("Review Action Error:", e);
-          // Detect specific Firebase Quota error
-          if (e.code === 'resource-exhausted' || (e.message && e.message.includes('quota'))) {
-              alert("❌ QUOTA EXCEEDED: The database daily write limit has been reached.\n\nBecause you uploaded a large dataset on the Free Plan, you have used all 20,000 daily writes.\n\nPlease upgrade to the Firebase Blaze plan (Pay-as-you-go) or wait 24 hours for the quota to reset.");
+          console.error("Review Error", e);
+          if (e.code === 'resource-exhausted') {
+              toast.error("Quota Exceeded. Try again tomorrow.");
           } else {
-              alert(`Action failed: ${e.message || "Unknown error. Check console."}`);
+              toast.error("Action failed.");
           }
       } finally {
           setIsProcessing(false);
@@ -43,50 +43,88 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   const handleAI = async () => {
       if(!sentence || !current) return;
       setIsProcessing(true);
+      toast.info("Analyzing with Gemini...");
       try {
           const res = await validateTranslation(sentence.english, current.text, targetLanguage); 
           await onUpdateTranslation({...current, aiQualityScore: res.score}); 
-      } catch(e: any) {
-          if (e.code === 'resource-exhausted') {
-             alert("Cannot save AI score: Database quota exceeded.");
-          } else {
-             alert("AI Check failed.");
-          }
+          toast.success(`AI Score: ${res.score}/10`);
+      } catch(e) {
+          toast.error("AI Check failed.");
       } finally {
           setIsProcessing(false);
       }
   };
   
-  if (!current) return <div className="text-center py-10 text-gray-500">All caught up! No pending translations found.</div>;
+  if (!pending.length) return (
+    <div className="max-w-lg mx-auto py-10">
+        <EmptyState 
+            icon={<span className="text-6xl">🎉</span>}
+            title="All caught up!"
+            description="There are no translations pending review at the moment. Great job!"
+            action={<Button variant="secondary" onClick={() => window.location.reload()}>Check for new items</Button>}
+        />
+    </div>
+  );
   
+  if (!current || !sentence) return <div className="max-w-3xl mx-auto"><Skeleton className="h-96 w-full rounded-3xl" /></div>;
+
   return (
-    <div className="max-w-3xl mx-auto">
-       <Card>
-          <h3 className="font-bold mb-2 text-gray-700">English Original</h3>
-          <p className="bg-gray-50 p-4 rounded mb-6 text-lg font-medium">{sentence?.english || "Loading sentence..."}</p>
+    <div className="max-w-2xl mx-auto pb-20">
+       {/* PROGRESS INDICATOR */}
+       <div className="text-center mb-6">
+           <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider">
+              <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+              {pending.length} Pending Reviews
+           </span>
+       </div>
+
+       <Card className="!p-0 !rounded-[32px] overflow-hidden shadow-2xl shadow-slate-200/60 border-0">
           
-          <h3 className="font-bold mb-2 text-gray-700">Proposed Translation</h3>
-          <p className="bg-blue-50 p-4 rounded mb-4 text-xl text-blue-900">{current.text}</p>
-          
-          <div className="flex items-center justify-between mb-4">
-              <div className="text-xs text-gray-500">
-                  Submitted by <span className="font-medium">{current.translatorId}</span> on {new Date(current.timestamp).toLocaleDateString()}
+          {/* ENGLISH HEADER */}
+          <div className="bg-slate-50 p-8 border-b border-slate-100">
+              <div className="text-slate-400 text-xs font-extrabold uppercase tracking-widest mb-3">English Source</div>
+              <div className="text-2xl font-medium text-slate-800 leading-relaxed">
+                  {sentence.english}
               </div>
-              {current.aiQualityScore && <Badge color={current.aiQualityScore > 7 ? 'green' : 'red'}>AI Score: {current.aiQualityScore}/10</Badge>}
           </div>
 
-          <div className="flex space-x-3 mt-6 pt-4 border-t border-gray-100">
-             <Button variant="danger" onClick={() => handleAction(current.id, 'rejected', 'Needs work')} disabled={isProcessing || !canApprove} isLoading={isProcessing}>
+          {/* TRANSLATION BODY */}
+          <div className="p-8 bg-white">
+              <div className="flex justify-between items-start mb-3">
+                  <div className="text-brand-500 text-xs font-extrabold uppercase tracking-widest">Translation ({targetLanguage.name})</div>
+                  {current.aiQualityScore && (
+                      <Badge color={current.aiQualityScore > 7 ? 'green' : 'red'}>AI: {current.aiQualityScore}/10</Badge>
+                  )}
+              </div>
+              <div className="text-3xl font-bold text-slate-900 leading-tight mb-8">
+                  {current.text}
+              </div>
+
+              <div className="flex items-center gap-3 text-sm text-slate-500 bg-slate-50 p-3 rounded-xl">
+                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs">
+                      {current.translatorId.substring(0,2)}
+                  </div>
+                  <div>
+                      <span className="block text-slate-900 font-bold">Translator {current.translatorId.substring(0,6)}</span>
+                      <span className="text-xs">{new Date(current.timestamp).toLocaleDateString()}</span>
+                  </div>
+              </div>
+          </div>
+
+          {/* ACTION BAR */}
+          <div className="p-6 bg-slate-50/50 border-t border-slate-100 grid grid-cols-3 gap-3">
+             <Button variant="danger" size="lg" onClick={() => handleAction(current.id, 'rejected', 'Needs work')} disabled={isProcessing || !canApprove} className="w-full">
                  Reject
              </Button>
-             <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleAction(current.id, 'approved')} disabled={isProcessing || !canApprove} isLoading={isProcessing}>
+             <Button variant="secondary" size="lg" onClick={handleAI} disabled={isProcessing} className="w-full !px-0">
+                 AI Check
+             </Button>
+             <Button variant="primary" size="lg" onClick={() => handleAction(current.id, 'approved')} disabled={isProcessing || !canApprove} className="w-full bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
                  Approve
              </Button>
-             <Button variant="secondary" onClick={handleAI} disabled={isProcessing} isLoading={isProcessing}>
-                 Check AI
-             </Button>
           </div>
-          {!canApprove && <p className="text-xs text-red-500 mt-2">You do not have permission to approve/reject.</p>}
+          
+          {!canApprove && <div className="bg-rose-50 text-rose-600 text-center p-2 text-xs font-bold">View Only Mode</div>}
        </Card>
     </div>
   );

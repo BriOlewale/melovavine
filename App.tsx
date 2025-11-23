@@ -16,6 +16,7 @@ import { auth } from './services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './services/firebaseConfig';
+import { ToastContainer } from './components/UI'; // Import Toast Container
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
@@ -24,7 +25,7 @@ const App: React.FC = () => {
   
   // Data State
   const [sentences, setSentences] = useState<Sentence[]>([]);
-  const [totalSentenceCount, setTotalSentenceCount] = useState(0); // NEW STATE
+  const [totalSentenceCount, setTotalSentenceCount] = useState(0);
   const [translations, setTranslations] = useState<Translation[]>([]);
   const [words, setWords] = useState<Word[]>([]);
   const [wordTranslations, setWordTranslations] = useState<WordTranslation[]>([]);
@@ -48,12 +49,12 @@ const App: React.FC = () => {
                 StorageService.getAnnouncements(),
                 StorageService.getForumTopics(),
                 StorageService.getSystemSettings(),
-                StorageService.getSentenceCount() // Fetch accurate count
+                StorageService.getSentenceCount()
             ]);
             setSentences(s); setTranslations(t); setWords(w); setWordTranslations(wt);
             setAllUsers(u); setAnnouncements(a); setForumTopics(f);
             setShowDemoBanner(set.showDemoBanner);
-            setTotalSentenceCount(count); // Set accurate count
+            setTotalSentenceCount(count);
           } catch (e) {
               console.error("Failed to load data", e);
           } finally {
@@ -61,7 +62,6 @@ const App: React.FC = () => {
           }
       };
 
-      // Check for verification token in URL
       const params = new URLSearchParams(window.location.search);
       const verifyToken = params.get('verify');
       if (verifyToken) {
@@ -75,17 +75,14 @@ const App: React.FC = () => {
           });
       }
 
-      // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
-              // Fetch detailed profile
               const docRef = doc(db, 'users', firebaseUser.uid);
               const snap = await getDoc(docRef);
               
               if (snap.exists()) {
                   let userData = snap.data() as User;
                   
-                  // SELF-HEALING: Force Super Admin logic if missing
                   if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
                       console.log("Self-healing: Promoting Brime to Admin...");
                       userData = {
@@ -101,7 +98,6 @@ const App: React.FC = () => {
                   setUser(userData);
                   init(); 
               } else {
-                  // Handle case where auth exists but profile doesn't (rare)
                   setUser(null);
                   setIsLoading(false);
               }
@@ -120,7 +116,6 @@ const App: React.FC = () => {
 
   const handleNavigate = (page: string) => setCurrentPage(page);
 
-  // FIXED: Clean signature, no unused parameters
   const handleImportSentences = async () => { 
       window.location.reload(); 
   };
@@ -163,9 +158,7 @@ const App: React.FC = () => {
       const translation = translations.find(t => t.id === translationId);
       if (translation && user) {
           try {
-              // FIX: Firestore cannot store 'undefined'. Ensure we use null or a string.
               const safeFeedback = feedback || null;
-
               const historyEntry = { 
                   timestamp: Date.now(), 
                   action: status, 
@@ -181,11 +174,10 @@ const App: React.FC = () => {
                   feedback: safeFeedback, 
                   history: [...(translation.history || []), historyEntry as any] 
               };
-              // Await ensuring errors are caught by caller
               await handleSaveTranslation(updated);
           } catch (error) {
               console.error("Review Action Failed:", error);
-              throw error; // Re-throw to let the Reviewer component handle the UI alert
+              throw error; 
           }
       }
   };
@@ -222,32 +214,32 @@ const App: React.FC = () => {
   const handleLogin = (loggedInUser: User) => { setUser(loggedInUser); };
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center">Loading Va Vanagi Cloud...</div>;
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div></div>;
   if (!user) return <Auth onLogin={handleLogin} />;
 
   const canAccessAdmin = StorageService.hasPermission(user, 'user.read') || user.role === 'admin';
   const canAccessReview = StorageService.hasPermission(user, 'translation.review') || user.role === 'reviewer';
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-brand-200 selection:text-brand-900">
+      <ToastContainer /> {/* GLOBAL TOASTS */}
       {showDemoBanner && (
-          <div className="bg-indigo-600 text-white px-4 py-2 text-center text-sm font-medium flex justify-between items-center">
+          <div className="bg-brand-600 text-white px-4 py-2 text-center text-sm font-medium flex justify-between items-center shadow-sm">
               <span>⚠ <strong>Cloud Demo:</strong> Connected to Firebase Firestore.</span>
-              <button onClick={() => setShowDemoBanner(false)} className="text-indigo-200 hover:text-white">&times;</button>
+              <button onClick={() => setShowDemoBanner(false)} className="text-brand-200 hover:text-white">&times;</button>
           </div>
       )}
       <Header user={user} onNavigate={handleNavigate} onSwitchRole={handleLogout} pendingReviewCount={pendingReviewCount} />
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-            {/* PASSING totalSentenceCount to Dashboard */}
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
+        <div className="space-y-8">
             {currentPage === 'dashboard' && <Dashboard sentences={sentences} totalCount={totalSentenceCount} translations={translations} language={targetLanguage} users={allUsers} onNavigate={handleNavigate} />}
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
             {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} />}
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} user={user} onDeleteWord={handleDeleteWord} />}
             {currentPage === 'corpus' && <Corpus sentences={sentences} translations={translations} users={allUsers} targetLanguage={targetLanguage} user={user} onVote={handleVote} onAddComment={handleAddComment} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
-            {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
-            {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
+            {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-8 text-center"><h3 className="text-xl font-bold text-slate-800">Access Denied</h3><p className="text-slate-500">You do not have permission to access this area.</p></div>)}
+            {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} /> : <div className="p-8 text-center"><h3 className="text-xl font-bold text-slate-800">Access Denied</h3><p className="text-slate-500">Restricted to Administrators.</p></div>)}
         </div>
       </main>
     </div>
