@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -118,7 +117,7 @@ const App: React.FC = () => {
 
   const handleNavigate = (page: string) => setCurrentPage(page);
 
-  // FIXED: No longer expects arguments to prevent crash on large imports
+  // FIXED: Clean signature, no unused parameters
   const handleImportSentences = async () => { 
       window.location.reload(); 
   };
