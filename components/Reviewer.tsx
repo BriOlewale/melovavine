@@ -19,6 +19,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   const [isProcessing, setIsProcessing] = useState(false);
   
   const current = pending[idx];
+  // Safely find sentence, or fallback if missing from local cache (due to 50k limit)
   const sentence = current ? sentences.find(s => s.id === current.sentenceId) : null;
   
   const canApprove = StorageService.hasPermission(user, 'translation.approve');
@@ -41,11 +42,18 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   };
 
   const handleAI = async () => {
-      if(!sentence || !current) return;
+      if(!current) return;
+      // If sentence text is missing, we can't really use AI validation effectively
+      const sourceText = sentence?.english || ""; 
+      if (!sourceText) {
+          toast.error("Cannot run AI check: Source sentence text not loaded.");
+          return;
+      }
+
       setIsProcessing(true);
       toast.info("Analyzing with Gemini...");
       try {
-          const res = await validateTranslation(sentence.english, current.text, targetLanguage); 
+          const res = await validateTranslation(sourceText, current.text, targetLanguage); 
           await onUpdateTranslation({...current, aiQualityScore: res.score}); 
           toast.success(`AI Score: ${res.score}/10`);
       } catch(e) {
@@ -66,7 +74,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
     </div>
   );
   
-  if (!current || !sentence) return <div className="max-w-3xl mx-auto"><Skeleton className="h-96 w-full rounded-3xl" /></div>;
+  if (!current) return <div className="max-w-3xl mx-auto"><Skeleton className="h-96 w-full rounded-3xl" /></div>;
 
   return (
     <div className="max-w-2xl mx-auto pb-20">
@@ -84,7 +92,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
           <div className="bg-slate-50 p-8 border-b border-slate-100">
               <div className="text-slate-400 text-xs font-extrabold uppercase tracking-widest mb-3">English Source</div>
               <div className="text-2xl font-medium text-slate-800 leading-relaxed">
-                  {sentence.english}
+                  {sentence ? sentence.english : <span className="italic text-slate-400">Loading source text for ID #{current.sentenceId}... (Data not in cache)</span>}
               </div>
           </div>
 
@@ -116,7 +124,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
              <Button variant="danger" size="lg" onClick={() => handleAction(current.id, 'rejected', 'Needs work')} disabled={isProcessing || !canApprove} className="w-full">
                  Reject
              </Button>
-             <Button variant="secondary" size="lg" onClick={handleAI} disabled={isProcessing} className="w-full !px-0">
+             <Button variant="secondary" size="lg" onClick={handleAI} disabled={isProcessing || !sentence} className="w-full !px-0">
                  AI Check
              </Button>
              <Button variant="primary" size="lg" onClick={() => handleAction(current.id, 'approved')} disabled={isProcessing || !canApprove} className="w-full bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
