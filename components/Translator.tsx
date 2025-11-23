@@ -20,7 +20,7 @@ interface TranslatorProps {
   onVote: (id: string, type: 'up' | 'down') => void;
 }
 
-export const Translator: React.FC<TranslatorProps> = ({ sentences, translations, user, users = [], targetLanguage, onSaveTranslation, wordTranslations, onSaveWordTranslation, onAddComment, onVote }) => {
+export const Translator: React.FC<TranslatorProps> = ({ sentences, translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote }) => {
   const [index, setIndex] = useState(0);
   const [text, setText] = useState('');
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
@@ -73,6 +73,13 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
   };
 
   const getUserName = (id: string) => users.find(u => u.id === id)?.name || 'Unknown';
+
+  // Helper to find existing translations for a selected word
+  const getExistingTranslations = (normalized: string) => {
+      const word = words.find(w => w.normalizedText === normalized);
+      if (!word) return [];
+      return wordTranslations.filter(wt => wt.wordId === word.id && wt.languageCode === targetLanguage.code);
+  };
 
   if (!sentence) return <div>No sentences loaded.</div>;
 
@@ -202,7 +209,7 @@ export const Translator: React.FC<TranslatorProps> = ({ sentences, translations,
             <Button variant="ghost" onClick={handleNext} disabled={index === sentences.length - 1}>Skip / Next →</Button>
        </div>
 
-       {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={wordTranslations.filter(wt => wt.wordId === selectedWord.n || wt.wordId === 'temp')} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, sentence.id); setSelectedWord(null); }} />}
+       {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={getExistingTranslations(selectedWord.n)} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, sentence.id); setSelectedWord(null); }} />}
        <SentenceNavigator isOpen={isNavOpen} onClose={() => setIsNavOpen(false)} sentences={sentences} translations={translations} targetLanguage={targetLanguage} onSelectSentence={setIndex} />
        <TranslationHistoryModal isOpen={!!historyModalTranslation} onClose={() => setHistoryModalTranslation(null)} translation={historyModalTranslation} />
     </div>

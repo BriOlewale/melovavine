@@ -133,13 +133,26 @@ const App: React.FC = () => {
   
   const handleSaveWordTranslation = async (wordText: string, normalizedText: string, translation: string, notes: string, exampleSentenceId: number) => {
       if (!user) return;
+      
+      // Check if word exists
       let wordId = words.find(w => w.normalizedText === normalizedText)?.id;
+
+      // Check for duplicate translation BEFORE creating anything
+      if (wordId) {
+          const existing = wordTranslations.find(wt => wt.wordId === wordId && wt.languageCode === targetLanguage.code);
+          if (existing) {
+              alert(`This word has already been translated to ${targetLanguage.name}. Only one translation is allowed per word.`);
+              return;
+          }
+      }
+
       if (!wordId) {
           const newWord: Word = { id: crypto.randomUUID(), text: wordText, normalizedText };
           await StorageService.saveWord(newWord);
           setWords(prev => [...prev, newWord]);
           wordId = newWord.id;
       }
+
       const newWT: WordTranslation = { id: crypto.randomUUID(), wordId, languageCode: targetLanguage.code, translation, notes, exampleSentenceId, createdByUserId: user.id, timestamp: Date.now() };
       await StorageService.saveWordTranslation(newWT);
       setWordTranslations(prev => [...prev, newWT]);
