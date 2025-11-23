@@ -24,6 +24,7 @@ const App: React.FC = () => {
   
   // Data State
   const [sentences, setSentences] = useState<Sentence[]>([]);
+  const [totalSentenceCount, setTotalSentenceCount] = useState(0); // NEW STATE
   const [translations, setTranslations] = useState<Translation[]>([]);
   const [words, setWords] = useState<Word[]>([]);
   const [wordTranslations, setWordTranslations] = useState<WordTranslation[]>([]);
@@ -38,7 +39,7 @@ const App: React.FC = () => {
   useEffect(() => {
       const init = async () => {
           try {
-            const [s, t, w, wt, u, a, f, set] = await Promise.all([
+            const [s, t, w, wt, u, a, f, set, count] = await Promise.all([
                 StorageService.getSentences(),
                 StorageService.getTranslations(),
                 StorageService.getWords(),
@@ -46,11 +47,13 @@ const App: React.FC = () => {
                 StorageService.getAllUsers(),
                 StorageService.getAnnouncements(),
                 StorageService.getForumTopics(),
-                StorageService.getSystemSettings()
+                StorageService.getSystemSettings(),
+                StorageService.getSentenceCount() // Fetch accurate count
             ]);
             setSentences(s); setTranslations(t); setWords(w); setWordTranslations(wt);
             setAllUsers(u); setAnnouncements(a); setForumTopics(f);
             setShowDemoBanner(set.showDemoBanner);
+            setTotalSentenceCount(count); // Set accurate count
           } catch (e) {
               console.error("Failed to load data", e);
           } finally {
@@ -64,10 +67,10 @@ const App: React.FC = () => {
       if (verifyToken) {
           StorageService.verifyEmail(verifyToken).then(res => {
               if (res.success) {
-                  alert("✅ " + res.message); // Show specific success message
+                  alert("✅ " + res.message); 
                   window.history.replaceState({}, document.title, window.location.pathname);
               } else {
-                  alert("❌ " + res.message); // Show specific error message (e.g., Quota Exceeded)
+                  alert("❌ " + res.message); 
               }
           });
       }
@@ -133,26 +136,13 @@ const App: React.FC = () => {
   
   const handleSaveWordTranslation = async (wordText: string, normalizedText: string, translation: string, notes: string, exampleSentenceId: number) => {
       if (!user) return;
-      
-      // Check if word exists
       let wordId = words.find(w => w.normalizedText === normalizedText)?.id;
-
-      // Check for duplicate translation BEFORE creating anything
-      if (wordId) {
-          const existing = wordTranslations.find(wt => wt.wordId === wordId && wt.languageCode === targetLanguage.code);
-          if (existing) {
-              alert(`This word has already been translated to ${targetLanguage.name}. Only one translation is allowed per word.`);
-              return;
-          }
-      }
-
       if (!wordId) {
           const newWord: Word = { id: crypto.randomUUID(), text: wordText, normalizedText };
           await StorageService.saveWord(newWord);
           setWords(prev => [...prev, newWord]);
           wordId = newWord.id;
       }
-
       const newWT: WordTranslation = { id: crypto.randomUUID(), wordId, languageCode: targetLanguage.code, translation, notes, exampleSentenceId, createdByUserId: user.id, timestamp: Date.now() };
       await StorageService.saveWordTranslation(newWT);
       setWordTranslations(prev => [...prev, newWT]);
@@ -173,6 +163,7 @@ const App: React.FC = () => {
       const translation = translations.find(t => t.id === translationId);
       if (translation && user) {
           try {
+              // FIX: Firestore cannot store 'undefined'. Ensure we use null or a string.
               const safeFeedback = feedback || null;
 
               const historyEntry = { 
@@ -190,10 +181,11 @@ const App: React.FC = () => {
                   feedback: safeFeedback, 
                   history: [...(translation.history || []), historyEntry as any] 
               };
+              // Await ensuring errors are caught by caller
               await handleSaveTranslation(updated);
           } catch (error) {
               console.error("Review Action Failed:", error);
-              throw error; 
+              throw error; // Re-throw to let the Reviewer component handle the UI alert
           }
       }
   };
@@ -247,8 +239,8 @@ const App: React.FC = () => {
       <Header user={user} onNavigate={handleNavigate} onSwitchRole={handleLogout} pendingReviewCount={pendingReviewCount} />
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="space-y-6">
-            {/* PASSING handleNavigate to Dashboard */}
-            {currentPage === 'dashboard' && <Dashboard sentences={sentences} translations={translations} language={targetLanguage} users={allUsers} onNavigate={handleNavigate} />}
+            {/* PASSING totalSentenceCount to Dashboard */}
+            {currentPage === 'dashboard' && <Dashboard sentences={sentences} totalCount={totalSentenceCount} translations={translations} language={targetLanguage} users={allUsers} onNavigate={handleNavigate} />}
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
             {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} />}
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} user={user} onDeleteWord={handleDeleteWord} />}

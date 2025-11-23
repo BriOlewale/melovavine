@@ -15,18 +15,21 @@ const Icons = {
   Users: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
 };
 
-export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translation[]; language: Language; users: User[]; onNavigate: (page: string) => void }> = ({ sentences, translations, language, users, onNavigate }) => {
+export const Dashboard: React.FC<{ sentences: Sentence[]; totalCount: number; translations: Translation[]; language: Language; users: User[]; onNavigate: (page: string) => void }> = ({ sentences, totalCount, translations, language, users, onNavigate }) => {
   const langTrans = translations.filter(t => t.languageCode === language.code);
   const approved = langTrans.filter(t => t.status === 'approved').length;
   const pending = langTrans.filter(t => t.status === 'pending').length;
-  const remaining = sentences.length - langTrans.length;
   
-  const progressPercent = Math.round(((sentences.length - remaining) / sentences.length) * 100) || 0;
+  // Use totalCount if available (cloud), otherwise fallback to array length (local)
+  const displayTotal = totalCount > 0 ? totalCount : sentences.length;
+  const remaining = Math.max(0, displayTotal - langTrans.length);
+  
+  const progressPercent = Math.round(((displayTotal - remaining) / displayTotal) * 100) || 0;
 
   const data = [
     { name: 'Approved', value: approved, color: '#10b981' }, 
     { name: 'Pending', value: pending, color: '#f59e0b' },   
-    { name: 'Remaining', value: remaining > 0 ? remaining : 0, color: '#f1f5f9' }, 
+    { name: 'Remaining', value: remaining, color: '#f1f5f9' }, 
   ];
 
   const topContributors = users.map(u => {
@@ -71,7 +74,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
              <div className="flex justify-between items-start">
                 <div>
                     <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Total Sentences</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-slate-800">{sentences.length.toLocaleString()}</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-slate-800">{displayTotal.toLocaleString()}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-blue-50 text-brand-600">
                    <Icons.Book />
@@ -93,7 +96,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                 </div>
              </div>
              <div className="mt-4 w-full bg-slate-100 rounded-full h-1.5">
-                <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${(approved/sentences.length)*100}%` }}></div>
+                <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${(approved/displayTotal)*100}%` }}></div>
              </div>
           </Card>
 
@@ -108,7 +111,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                 </div>
              </div>
              <div className="mt-4 w-full bg-slate-100 rounded-full h-1.5">
-                <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${(pending/sentences.length)*100}%` }}></div>
+                <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${(pending/displayTotal)*100}%` }}></div>
              </div>
           </Card>
        </div>
