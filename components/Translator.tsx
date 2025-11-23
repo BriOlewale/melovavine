@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sentence, Translation, User, Language, Word, WordTranslation } from '../types';
-import { Button, Card, Badge, toast, Skeleton } from './UI'; 
+import { Button, Card, toast, Skeleton } from './UI'; 
 import { getTranslationSuggestion } from '../services/geminiService';
 import { WordDefinitionModal } from './WordDefinitionModal';
 import { StorageService } from '../services/storageService';
