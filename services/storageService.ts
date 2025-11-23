@@ -1,7 +1,7 @@
 import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
-  collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc, getCountFromServer 
+  collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc, getCountFromServer, where, runTransaction 
 } from 'firebase/firestore';
 // @ts-ignore
 import { 
@@ -26,23 +26,164 @@ export const ALL_PERMISSIONS: Permission[] = [
 
 const mapDocs = <T>(snapshot: any): T[] => snapshot.docs.map((d: any) => ({ ...d.data(), id: d.id }));
 
+// --- SMART QUEUE HELPERS ---
+const LOCK_DURATION_MS = 10 * 60 * 1000; // 10 Minutes
+const TARGET_REDUNDANCY = 2; // We want 2 translations per sentence before closing
+
 export const StorageService = {
-  // --- SENTENCES ---
+  // --- SENTENCES (SMART QUEUE) ---
+  
+  // 1. Get the next best sentence for a specific user
+  getSmartQueueTask: async (user: User): Promise<Sentence | null> => {
+      try {
+          // Step A: Get candidates. We want sentences that are 'open' and high priority.
+          // Note: Firestore requires an index on status + priorityScore.
+          const sentencesRef = collection(db, 'sentences');
+          const q = query(
+              sentencesRef, 
+              where('status', '==', 'open'),
+              orderBy('priorityScore', 'desc'),
+              limit(20) // Fetch a batch to filter client-side
+          );
+          
+          const snap = await getDocs(q);
+          const candidates = snap.docs.map(d => d.data() as Sentence);
+
+          // Step B: Filter candidates
+          // 1. Must not be locked by someone else (unless lock expired)
+          // 2. Must not have been translated by THIS user already
+          const now = Date.now();
+          
+          const validTask = candidates.find(s => {
+              // Is it locked by someone else?
+              const isLocked = s.lockedBy && s.lockedBy !== user.id && s.lockedUntil && s.lockedUntil > now;
+              if (isLocked) return false;
+
+              // Did I already translate it?
+              if (user.translatedSentenceIds?.includes(s.id)) return false;
+
+              return true;
+          });
+
+          if (!validTask) return null;
+
+          // Step C: Attempt to LOCK this task
+          const success = await StorageService.lockSentence(validTask.id.toString(), user.id);
+          if (success) {
+              return validTask;
+          } else {
+              // Race condition hit (someone else grabbed it), try recursing or return null
+              return null; 
+          }
+      } catch (e) {
+          console.error("Smart Queue Fetch Error:", e);
+          return null;
+      }
+  },
+
+  // 2. Transactionally Lock a Sentence
+  lockSentence: async (sentenceId: string, userId: string): Promise<boolean> => {
+      try {
+          await runTransaction(db, async (transaction) => {
+              const ref = doc(db, 'sentences', sentenceId);
+              const sfDoc = await transaction.get(ref);
+              if (!sfDoc.exists()) throw "Document does not exist!";
+
+              const data = sfDoc.data() as Sentence;
+              const now = Date.now();
+
+              // Check lock again inside transaction
+              if (data.lockedBy && data.lockedBy !== userId && data.lockedUntil && data.lockedUntil > now) {
+                  throw "Locked by another user";
+              }
+
+              // Apply lock
+              transaction.update(ref, {
+                  lockedBy: userId,
+                  lockedUntil: now + LOCK_DURATION_MS
+              });
+          });
+          return true;
+      } catch (e) {
+          console.log("Lock failed:", e);
+          return false;
+      }
+  },
+
+  // 3. Release Lock (e.g. on unmount or skip)
+  unlockSentence: async (sentenceId: string) => {
+      const ref = doc(db, 'sentences', sentenceId);
+      await updateDoc(ref, { lockedBy: null, lockedUntil: null });
+  },
+
+  // 4. Submit Translation & Update Queue Logic
+  submitTranslation: async (translation: Translation, user: User) => {
+      const batch = writeBatch(db);
+
+      // A. Save Translation
+      const transRef = doc(db, 'translations', translation.id);
+      batch.set(transRef, translation);
+
+      // B. Update Sentence Stats (Unlock + Increment Count)
+      const sentenceRef = doc(db, 'sentences', translation.sentenceId.toString());
+      // We need to read the sentence to know if we should close it
+      const sSnap = await getDoc(sentenceRef);
+      if (sSnap.exists()) {
+          const sData = sSnap.data() as Sentence;
+          const newCount = (sData.translationCount || 0) + 1;
+          
+          const updates: any = {
+              lockedBy: null,
+              lockedUntil: null,
+              translationCount: newCount
+          };
+
+          // Close sentence if we hit target redundancy
+          if (newCount >= (sData.targetTranslations || TARGET_REDUNDANCY)) {
+              updates.status = 'needs_review';
+              updates.priorityScore = 0; // Move to bottom of queue
+          }
+
+          batch.update(sentenceRef, updates);
+      }
+
+      // C. Update User History (Local Cache for filtering)
+      const userRef = doc(db, 'users', user.id);
+      const newHistory = [...(user.translatedSentenceIds || []), translation.sentenceId];
+      // Dedupe just in case
+      const uniqueHistory = Array.from(new Set(newHistory));
+      batch.update(userRef, { translatedSentenceIds: uniqueHistory });
+
+      await batch.commit();
+  },
+
+  // Priority Calculation Helper
+  calculateInitialPriority: (sentence: string): number => {
+      let score = 100;
+      // Shorter sentences (easier) get slight boost for momentum? 
+      // Or longer (harder) get boost? Let's boost medium length (10-50 chars).
+      const len = sentence.length;
+      if (len > 10 && len < 50) score += 20;
+      if (len < 10) score += 10;
+      
+      // Can add frequency analysis logic here later
+      return score;
+  },
+
+  // --- ORIGINAL METHODS (Maintained for compatibility) ---
   getSentences: async (): Promise<Sentence[]> => {
-    // Still limiting DATA fetch to avoid crash, but we will use getSentenceCount for the dashboard number
-    const q = query(collection(db, 'sentences'), limit(2000)); 
+    // Return generic list for browse/admin view
+    const q = query(collection(db, 'sentences'), limit(500)); 
     const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as Sentence); 
   },
 
-  // NEW: Get Total Count without downloading data (Fast & Cheap)
   getSentenceCount: async (): Promise<number> => {
       const coll = collection(db, 'sentences');
       const snapshot = await getCountFromServer(coll);
       return snapshot.data().count;
   },
   
-  // ... (Rest of the file remains unchanged) ...
   saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
     const CHUNK_SIZE = 450; 
     for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
@@ -51,7 +192,19 @@ export const StorageService = {
         chunk.forEach(s => {
             if (s.id) {
                 const ref = doc(db, 'sentences', s.id.toString());
-                batch.set(ref, s);
+                // Ensure new fields are present
+                const enhancedSentence: Sentence = {
+                    ...s,
+                    priorityScore: StorageService.calculateInitialPriority(s.english),
+                    status: 'open',
+                    translationCount: 0,
+                    targetTranslations: TARGET_REDUNDANCY,
+                    lockedBy: null,
+                    lockedUntil: null,
+                    difficulty: s.english.length < 20 ? 1 : s.english.length > 100 ? 3 : 2,
+                    length: s.english.length
+                };
+                batch.set(ref, enhancedSentence);
             }
         });
         await batch.commit();

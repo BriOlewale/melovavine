@@ -1,8 +1,21 @@
-
 export interface Sentence {
   id: number;
   english: string;
   projectId?: string;
+  
+  // Smart Queue Fields
+  priorityScore: number; // Calculated score (higher = show first)
+  difficulty: 1 | 2 | 3; // 1=Short/Easy, 3=Long/Complex
+  length: number;
+  
+  // Translation State
+  status: 'open' | 'needs_review' | 'approved';
+  translationCount: number; // How many people have translated this?
+  targetTranslations: number; // Goal (e.g., 2 or 3 before approval)
+  
+  // Distributed Locking
+  lockedBy?: string | null; // User ID
+  lockedUntil?: number | null; // Timestamp
 }
 
 export interface TranslationHistoryEntry {
@@ -80,9 +93,11 @@ export interface User {
   role: 'admin' | 'translator' | 'reviewer' | 'guest';
   email: string;
   isActive?: boolean;
-  isVerified?: boolean; // NEW FIELD
+  isVerified?: boolean; 
   groupIds?: string[];
   effectivePermissions?: Permission[];
+  // Cache of translated sentence IDs to avoid re-fetching
+  translatedSentenceIds?: number[]; 
 }
 
 export interface UserGroup {
