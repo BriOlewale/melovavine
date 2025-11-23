@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sentence, Translation, User, Language, Word, WordTranslation } from '../types';
-import { Button, Card, toast, Skeleton } from './UI'; 
+import { Button, Card, toast, Skeleton, Badge } from './UI'; 
 import { getTranslationSuggestion } from '../services/geminiService';
 import { WordDefinitionModal } from './WordDefinitionModal';
 import { StorageService } from '../services/storageService';
@@ -19,20 +19,24 @@ interface TranslatorProps {
   onVote: (id: string, type: 'up' | 'down') => void;
 }
 
-export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, words, wordTranslations, onSaveWordTranslation }) => {
-  // Session State
+export const Translator: React.FC<TranslatorProps> = ({ sentences, translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote }) => {
   const [currentTask, setCurrentTask] = useState<Sentence | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState('');
   const [sessionCount, setSessionCount] = useState(0);
   const [selectedWord, setSelectedWord] = useState<{t: string, n: string} | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  // NEW: Success state to show animation
   const [showSuccess, setShowSuccess] = useState(false);
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
 
-  const skippedIds = useRef<Set<number>>(new Set());
+  const processedIds = useRef<Set<number>>(new Set());
   const SESSION_GOAL = 10;
+
+  // Find existing translation for the current task by THIS user
+  // We look into the 'translations' prop which App.tsx keeps updated
+  const sentenceTranslations = translations.filter(t => t.sentenceId === currentTask?.id && t.languageCode === targetLanguage.code);
+  const myTranslation = sentenceTranslations.find(t => t.translatorId === user.id);
+  const communityTranslations = sentenceTranslations.filter(t => t.translatorId !== user.id).sort((a, b) => b.votes - a.votes);
 
   useEffect(() => {
       loadNextTask();
@@ -41,22 +45,38 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       };
   }, []);
 
+  // Update text field when task or myTranslation changes
+  useEffect(() => {
+      if (myTranslation) {
+          setText(myTranslation.text);
+      } else if (currentTask && !myTranslation) {
+          // Only clear text if we switched tasks and don't have a translation yet
+          // We don't want to clear if user is just typing
+          // Note: logic simplified, usually we clear on loadNextTask
+      }
+  }, [myTranslation, currentTask]);
+
   const loadNextTask = async () => {
       setIsLoading(true);
       setErrorMsg(null);
       setText('');
-      setShowSuccess(false); // Reset success state
+      setShowSuccess(false); 
       try {
           let task: Sentence | null = null;
           let attempts = 0;
           
           while (attempts < 5) {
-              task = await StorageService.getSmartQueueTask(user);
+              if (attempts === 0) {
+                  task = await StorageService.getSmartQueueTask(user);
+              } else {
+                  // @ts-ignore
+                  task = await StorageService.getSmartQueueTask(user, Array.from(processedIds.current));
+              }
+              
               if (!task) break; 
-              if (skippedIds.current.has(task.id)) {
-                   // @ts-ignore 
-                  task = await StorageService.getSmartQueueTask(user, Array.from(skippedIds.current));
-                  if (task && !skippedIds.current.has(task.id)) break; 
+              
+              if (processedIds.current.has(task.id)) {
+                  task = null; 
               } else {
                   break; 
               }
@@ -89,28 +109,36 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   const handleSave = async () => {
       if (!currentTask) return;
       
+      // ENFORCE 1 TRANSLATION PER USER:
+      // If 'myTranslation' exists, we use ITS ID. If not, we create a NEW ID.
+      const translationId = myTranslation ? myTranslation.id : crypto.randomUUID();
+
       const translation: Translation = {
-          id: crypto.randomUUID(),
+          id: translationId,
           sentenceId: currentTask.id,
           text: text,
           languageCode: targetLanguage.code,
           translatorId: user.id,
           timestamp: Date.now(),
-          votes: 0,
-          voteHistory: {},
-          status: 'pending'
+          votes: myTranslation?.votes || 0,
+          voteHistory: myTranslation?.voteHistory || {},
+          status: 'pending' // Resets to pending on edit
       };
 
       setIsLoading(true);
       try {
+        // Save locally first to update UI instantly (handled by App.tsx prop function usually, but here we use service directly for queue logic)
+        // Actually, App.tsx listens to snapshots or we need to manually update.
+        // For the queue to work, we use StorageService directly.
+        onSaveTranslation(translation); // Update local App state
         await StorageService.submitTranslation(translation, user);
         
-        // VISUAL FEEDBACK
+        processedIds.current.add(currentTask.id);
+
         setShowSuccess(true); 
         setSessionCount(prev => prev + 1);
-        toast.success(getMotivation());
+        toast.success(myTranslation ? "Translation Updated!" : getMotivation());
         
-        // Wait a moment to let the user see the success state before loading next
         setTimeout(() => {
             loadNextTask();
         }, 1200);
@@ -124,7 +152,7 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
   const handleSkip = async () => {
       if (!currentTask) return;
       toast.info("Skipping...");
-      skippedIds.current.add(currentTask.id);
+      processedIds.current.add(currentTask.id);
       await StorageService.unlockSentence(currentTask.id.toString());
       await loadNextTask();
   };
@@ -142,6 +170,20 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
       const word = words.find(w => w.normalizedText === normalized);
       if (!word) return [];
       return wordTranslations.filter(wt => wt.wordId === word.id && wt.languageCode === targetLanguage.code);
+  };
+
+  const getUserName = (id: string) => users?.find(u => u.id === id)?.name || 'Unknown';
+
+  const handleCommentChange = (id: string, val: string) => {
+      setCommentInputs(prev => ({ ...prev, [id]: val }));
+  };
+
+  const submitComment = (id: string) => {
+      const txt = commentInputs[id];
+      if (txt && txt.trim()) {
+          onAddComment(id, txt);
+          setCommentInputs(prev => ({ ...prev, [id]: '' }));
+      }
   };
 
   // SUCCESS STATE VIEW
@@ -199,7 +241,6 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
               <p className="text-xs text-slate-500">Task ID: #{currentTask.id}</p>
           </div>
           
-          {/* Session Progress Bar */}
           <div className="w-full sm:w-64">
               <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
                   <span>Session Progress</span>
@@ -231,9 +272,16 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
            </Card>
        </div>
 
-       <Card className="!p-0 !rounded-3xl !overflow-hidden !border-2 !border-slate-100 focus-within:!border-brand-300 transition-colors">
+       <Card className={`!p-0 !rounded-3xl !overflow-hidden !border-2 transition-colors ${myTranslation ? 'border-blue-300 bg-blue-50/30' : 'border-slate-100 focus-within:!border-brand-300'}`}>
             <div className="p-6 sm:p-8">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Your Translation</label>
+                <div className="flex justify-between mb-4">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        {myTranslation ? 'Edit Your Translation' : 'Your Translation'}
+                    </label>
+                    {myTranslation && (
+                         <Badge color="blue">You have already translated this</Badge>
+                    )}
+                </div>
                 <textarea 
                   className="w-full border-0 focus:ring-0 p-0 resize-none text-xl sm:text-2xl text-slate-700 placeholder-slate-300 min-h-[120px] bg-transparent leading-relaxed" 
                   rows={3} 
@@ -255,10 +303,76 @@ export const Translator: React.FC<TranslatorProps> = ({ user, targetLanguage, wo
                    </Button>
                </div>
                <Button onClick={handleSave} isLoading={isLoading} fullWidth size="lg" className="shadow-lg shadow-brand-500/20 sm:w-auto" disabled={!text.trim()}>
-                  Submit Translation
+                  {myTranslation ? 'Update Translation' : 'Submit Translation'}
                </Button>
             </div>
        </Card>
+
+       {/* COMMUNITY SECTION */}
+       {communityTranslations.length > 0 && (
+           <div className="space-y-4 pt-2">
+             <div className="flex items-center gap-4 mb-4">
+                 <div className="h-px bg-slate-200 flex-1"></div>
+                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Community Contributions</span>
+                 <div className="h-px bg-slate-200 flex-1"></div>
+             </div>
+             {communityTranslations.map(t => {
+                const voteStatus = t.voteHistory?.[user.id];
+                return (
+                  <Card key={t.id} className="!bg-slate-50/50 !border-slate-200">
+                     <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
+                           <div className="text-lg font-medium text-slate-700 mb-2">{t.text}</div>
+                           <div className="flex flex-wrap items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
+                                      {getUserName(t.translatorId).substring(0,1).toUpperCase()}
+                                  </div>
+                                  <span className="text-xs font-semibold text-slate-500">{getUserName(t.translatorId)}</span>
+                              </div>
+                              <span className="text-xs text-slate-300">•</span>
+                              <span className="text-xs text-slate-400">{new Date(t.timestamp).toLocaleDateString()}</span>
+                           </div>
+                           
+                           {t.comments && t.comments.length > 0 && (
+                               <div className="mt-3 space-y-2 bg-white/80 p-3 rounded-lg border border-slate-100">
+                                   {t.comments.map(c => (
+                                       <div key={c.id} className="text-sm text-slate-700">
+                                           <span className="font-bold text-xs text-slate-900 mr-2">{c.userName}:</span>
+                                           {c.text}
+                                       </div>
+                                   ))}
+                               </div>
+                           )}
+                        </div>
+                        <div className="flex flex-col items-center bg-white rounded-xl border border-slate-100 shadow-sm p-1">
+                           <button onClick={() => onVote(t.id, 'up')} className={`p-1.5 rounded-lg transition-colors ${voteStatus === 'up' ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
+                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" /></svg>
+                           </button>
+                           <span className={`text-xs font-bold py-1 ${t.votes > 0 ? 'text-emerald-600' : 'text-slate-600'}`}>{t.votes}</span>
+                           <button onClick={() => onVote(t.id, 'down')} className={`p-1.5 rounded-lg transition-colors ${voteStatus === 'down' ? 'text-rose-500 bg-rose-50' : 'text-slate-400 hover:bg-slate-50'}`}>
+                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                           </button>
+                        </div>
+                     </div>
+                     <div className="mt-4 pt-3 border-t border-slate-200/60">
+                         <div className="flex gap-2">
+                             <input 
+                                type="text" 
+                                placeholder="Add a comment..." 
+                                className="flex-1 text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all"
+                                value={commentInputs[t.id] || ''}
+                                onChange={(e) => handleCommentChange(t.id, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') submitComment(t.id); }} 
+                             />
+                             <Button size="sm" variant="secondary" onClick={() => submitComment(t.id)} disabled={!commentInputs[t.id]?.trim()}>Post</Button>
+                         </div>
+                     </div>
+                  </Card>
+                );
+             })}
+           </div>
+       )}
 
        {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={getExistingTranslations(selectedWord.n)} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, currentTask.id); setSelectedWord(null); }} />}
     </div>
