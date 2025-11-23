@@ -1,7 +1,7 @@
 import React from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sentence, Translation, Language, User } from '../types';
-import { Card, Badge, Button } from './UI';
+import { Card, Button } from './UI';
 
 // Modern Line Icons
 const Icons = {
@@ -36,7 +36,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
   .slice(0, 5);
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-6 sm:space-y-8 pb-12">
        
        {/* HERO HEADER */}
        <div className="relative bg-gradient-to-br from-cyan-500 to-teal-600 rounded-3xl p-8 sm:p-12 text-white overflow-hidden shadow-xl shadow-teal-500/20">
@@ -46,8 +46,8 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                       <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                       Live Project
                   </div>
-                  <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">Welcome to {language.name} Translation</h1>
-                  <p className="text-teal-100 max-w-xl text-lg">Join the community effort to preserve and digitize our language. Every sentence matters.</p>
+                  <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2">Welcome back! 👋</h1>
+                  <p className="text-teal-100 mt-1 text-sm sm:text-base">Here's what's happening with the <strong>{language.name}</strong> translation project.</p>
               </div>
               <div className="flex gap-3">
                   <Button variant="glass" onClick={() => window.scrollTo({top: 500, behavior: 'smooth'})}>View Stats</Button>
@@ -62,20 +62,20 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
           <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-40 h-40 bg-cyan-300/20 rounded-full blur-2xl"></div>
        </div>
 
-       {/* STATS GRID */}
+       {/* STATS GRID - Stack on mobile */}
        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 -mt-8 sm:-mt-12 relative z-20 px-4 sm:px-8">
           <Card className="flex flex-col justify-between h-full !border-0 !shadow-lg shadow-slate-200/50">
              <div className="flex justify-between items-start">
                 <div>
                     <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Total Sentences</p>
-                    <p className="text-3xl font-bold text-slate-800 mt-1">{sentences.length.toLocaleString()}</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-slate-800">{sentences.length.toLocaleString()}</p>
                 </div>
-                <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
+                <div className="p-3 rounded-xl bg-blue-50 text-brand-600">
                    <Icons.Book />
                 </div>
              </div>
              <div className="mt-4 w-full bg-slate-100 rounded-full h-1.5">
-                <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: '100%' }}></div>
+                <div className="bg-brand-500 h-1.5 rounded-full" style={{ width: '100%' }}></div>
              </div>
           </Card>
 
@@ -83,7 +83,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
              <div className="flex justify-between items-start">
                 <div>
                     <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Approved</p>
-                    <p className="text-3xl font-bold text-slate-800 mt-1">{approved.toLocaleString()}</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-slate-800">{approved.toLocaleString()}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600">
                    <Icons.Check />
@@ -97,8 +97,8 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
           <Card className="flex flex-col justify-between h-full !border-0 !shadow-lg shadow-slate-200/50">
              <div className="flex justify-between items-start">
                 <div>
-                    <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Pending Review</p>
-                    <p className="text-3xl font-bold text-slate-800 mt-1">{pending.toLocaleString()}</p>
+                    <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Pending</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-slate-800">{pending.toLocaleString()}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-amber-50 text-amber-600">
                    <Icons.Clock />
@@ -110,18 +110,19 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
           </Card>
        </div>
 
-       {/* CONTENT SPLIT */}
-       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+       {/* MAIN CONTENT GRID - Stack on mobile */}
+       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
            
-           {/* CHART SECTION */}
-           <div className="lg:col-span-2">
-               <Card className="h-[400px] flex flex-col">
-                   <div className="flex justify-between items-center mb-8">
-                       <h3 className="text-lg font-bold text-slate-800">Data Visualisation</h3>
-                       <div className="flex gap-2">
-                           <div className="flex items-center text-xs text-slate-500 gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Approved</div>
-                           <div className="flex items-center text-xs text-slate-500 gap-1"><div className="w-2 h-2 rounded-full bg-amber-500"></div> Pending</div>
+           {/* LEFT COLUMN */}
+           <div className="lg:col-span-2 space-y-6 sm:space-y-8">
+               {/* PROJECT HEALTH CHART */}
+               <Card className="h-80 sm:h-96 flex flex-col">
+                   <div className="flex justify-between items-center mb-6">
+                       <div>
+                           <h3 className="font-bold text-lg text-slate-800">Project Progress</h3>
+                           <p className="text-sm text-slate-500">{progressPercent}% completed</p>
                        </div>
+                       <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded">Active</span>
                    </div>
                    <div className="flex-1 relative">
                       <ResponsiveContainer width="100%" height="100%">
@@ -130,19 +131,18 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                                 data={data} 
                                 cx="50%" 
                                 cy="50%" 
-                                innerRadius={80} 
-                                outerRadius={110} 
+                                innerRadius={70} 
+                                outerRadius={100} 
                                 paddingAngle={5} 
                                 dataKey="value"
                                 stroke="none"
-                                cornerRadius={6}
                              >
                                 {data.map((entry, index) => (
                                   <Cell key={`cell-${index}`} fill={entry.color} />
                                 ))}
                              </Pie>
                              <Tooltip 
-                                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px -5px rgba(0,0,0,0.1)', padding: '12px 16px' }}
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                              />
                           </PieChart>
                        </ResponsiveContainer>
@@ -155,43 +155,75 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                        </div>
                    </div>
                </Card>
+
+               {/* QUICK ACTIONS */}
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <div className="bg-gradient-to-br from-brand-500 to-cyan-400 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                       <div className="relative z-10">
+                           <div className="h-12 w-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 backdrop-blur-sm">
+                               <Icons.Translate />
+                           </div>
+                           <h3 className="text-xl font-bold mb-2">Start Translating</h3>
+                           <p className="text-brand-50 text-sm mb-6">Help us reach 100% completion. Every sentence counts!</p>
+                           <Button size="sm" className="bg-white text-brand-600 hover:bg-brand-50 border-none shadow-none w-full sm:w-auto">Go to Translator →</Button>
+                       </div>
+                       <div className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full bg-white/10"></div>
+                   </div>
+
+                   <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden hover:shadow-md transition-shadow">
+                       <div className="relative z-10">
+                           <div className="h-12 w-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center mb-4">
+                               <Icons.Check />
+                           </div>
+                           <h3 className="text-xl font-bold text-slate-800 mb-2">Review Pending</h3>
+                           <p className="text-slate-500 text-sm mb-6">There are {pending} sentences waiting for your approval.</p>
+                           <Button size="sm" variant="secondary" className="w-full">Go to Reviews</Button>
+                       </div>
+                   </div>
+               </div>
            </div>
            
-           {/* LEADERBOARD MINI */}
-           <div className="space-y-6">
+           {/* RIGHT COLUMN */}
+           <div className="space-y-8">
+               {/* TOP CONTRIBUTORS */}
                <Card className="h-auto">
                    <div className="flex items-center justify-between mb-6">
                        <h3 className="font-bold text-lg text-slate-800">Top Contributors</h3>
                        <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">
-                           <Icons.Zap />
+                           <Icons.TrendingUp />
                        </div>
                    </div>
                    
                    {topContributors.length > 0 ? (
-                       <div className="space-y-4">
+                       <div className="space-y-5">
                            {topContributors.map((c, i) => (
                                <div key={c.id} className="flex items-center gap-4 group p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                                   <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm ${i === 0 ? 'bg-gradient-to-br from-yellow-300 to-yellow-500 text-white shadow-md shadow-yellow-500/30' : 'bg-slate-100 text-slate-600'}`}>
-                                       {i + 1}
+                                   <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm ${i === 0 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
+                                       {c.name.substring(0, 2).toUpperCase()}
                                    </div>
                                    <div className="flex-1 min-w-0">
                                        <div className="flex justify-between items-center mb-1">
-                                           <p className="text-sm font-bold text-slate-800 truncate">{c.name}</p>
-                                           <span className="text-xs font-bold text-slate-400">{c.approvedCount} OK</span>
+                                           <p className="text-sm font-semibold text-slate-800 truncate">{c.name}</p>
+                                           {i === 0 && <span className="text-xs font-bold text-yellow-600">👑 #1</span>}
                                        </div>
                                        <div className="w-full bg-slate-100 rounded-full h-1.5">
-                                           <div className="bg-teal-500 h-1.5 rounded-full" style={{ width: `${(c.approvedCount / (topContributors[0].approvedCount || 1)) * 100}%` }}></div>
+                                           <div className="bg-brand-500 h-1.5 rounded-full" style={{ width: `${(c.approvedCount / (topContributors[0].approvedCount || 1)) * 100}%` }}></div>
                                        </div>
+                                       <p className="text-xs text-slate-400 mt-1">{c.approvedCount} Approved</p>
                                    </div>
                                </div>
                            ))}
                        </div>
                    ) : (
-                       <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                           <p className="text-sm">No contributions yet.</p>
-                           <p className="text-xs mt-1">Start translating to appear here!</p>
+                       <div className="text-center py-8 text-slate-400">
+                           <Icons.Users />
+                           <p className="mt-2 text-sm">No contributions yet.</p>
                        </div>
                    )}
+                   
+                   <div className="mt-6 pt-4 border-t border-slate-50">
+                       <Button variant="ghost" fullWidth className="text-sm text-slate-500 hover:text-brand-600">View Leaderboard</Button>
+                   </div>
                </Card>
            </div>
        </div>
