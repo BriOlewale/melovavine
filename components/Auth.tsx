@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { StorageService } from '../services/storageService';
 import { Button, Card, Input } from './UI';
 import { User } from '../types';
-import emailjs from '@emailjs/browser';
 
 export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [view, setView] = useState<'login' | 'register' | 'sent'>('login');
@@ -26,35 +25,11 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                 setError(res.message || 'Error logging in');
             }
         } else if (view === 'register') {
-            // 1. Register via Storage Service (handles Auth, DB, Native Email, SignOut)
+            // Registration now sends the Firebase Email and logs out immediately
             const res = await StorageService.register(email, password, name);
             
             if (res.success) {
-                // 2. Optional: Send Branded EmailJS verification
-                // We do this here because Auth.tsx has access to the browser environment/config easiest
-                const settings = await StorageService.getSystemSettings();
-                if (settings.emailJsServiceId && settings.emailJsTemplateId && settings.emailJsPublicKey) {
-                    const templateParams = {
-                        to_name: name,
-                        to_email: email,
-                        verification_link: `${window.location.origin}/?verify=${res.token}`,
-                        message: "Welcome to Va Vanagi! Please verify your email to start translating."
-                    };
-
-                    try {
-                        await emailjs.send(
-                            settings.emailJsServiceId, 
-                            settings.emailJsTemplateId, 
-                            templateParams, 
-                            settings.emailJsPublicKey
-                        );
-                        console.log("Custom EmailJS Sent");
-                    } catch (emailErr) {
-                        console.error("Failed to send EmailJS", emailErr);
-                    }
-                }
-
-                // 3. Show Success Screen
+                // Show "Check Inbox" screen
                 setView('sent');
             } else {
                 setError(res.message || 'Registration failed.');
@@ -74,8 +49,8 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                 <div className="mx-auto h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-2xl mb-4">✉️</div>
                 <h2 className="text-2xl font-bold mb-2 text-slate-800">Check your Inbox</h2>
                 <p className="text-slate-600 mb-6">
-                    We have sent a verification link to <strong>{email}</strong>. 
-                    Please click the link in the email to activate your account.
+                    We have sent a verification email to <strong>{email}</strong>. 
+                    Please click the link in that email to activate your account before signing in.
                 </p>
                 <Button onClick={() => setView('login')} variant="secondary" className="mt-4">Back to Login</Button>
             </Card>

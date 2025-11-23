@@ -9,7 +9,6 @@ import { Leaderboard } from './components/Leaderboard';
 import { CommunityHub } from './components/CommunityHub';
 import { Corpus } from './components/Corpus';
 import { Auth } from './components/Auth';
-import { EmailVerifier } from './components/EmailVerifier'; // NEW IMPORT
 import { StorageService } from './services/storageService';
 import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
 import { auth } from './services/firebaseConfig';
@@ -23,7 +22,6 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showVerifier, setShowVerifier] = useState(false);
   
   // Data State
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -37,14 +35,6 @@ const App: React.FC = () => {
   const [showDemoBanner, setShowDemoBanner] = useState(false); 
 
   const targetLanguage = PNG_LANGUAGES[0];
-
-  // Check URL for verification param on mount
-  useEffect(() => {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('verify')) {
-          setShowVerifier(true);
-      }
-  }, []);
 
   // Initial Data Load
   useEffect(() => {
@@ -74,6 +64,18 @@ const App: React.FC = () => {
 
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
+              // Reload to check verification status if it changed recently
+              try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
+
+              // 1. SECURITY CHECK: Block unverified users (except Admin)
+              if (firebaseUser.email !== 'brime.olewale@gmail.com' && !firebaseUser.emailVerified) {
+                  console.warn("Blocked unverified user from auto-login.");
+                  await StorageService.logout();
+                  setUser(null);
+                  setIsLoading(false);
+                  return;
+              }
+
               const docRef = doc(db, 'users', firebaseUser.uid);
               const snap = await getDoc(docRef);
               
@@ -89,16 +91,6 @@ const App: React.FC = () => {
                           groupIds: ['g-admin']
                       };
                       await setDoc(docRef, userData, { merge: true });
-                  }
-
-                  // SECURITY FIX: Enforce Verification Check
-                  // If user is NOT admin AND isVerified is FALSE -> Sign Out immediately.
-                  if (userData.role !== 'admin' && !userData.isVerified) {
-                      console.log('Unverified user in auth state — signing out.');
-                      await StorageService.logout();
-                      setUser(null);
-                      setIsLoading(false);
-                      return;
                   }
 
                   userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
@@ -217,11 +209,6 @@ const App: React.FC = () => {
 
   const handleLogin = (loggedInUser: User) => { setUser(loggedInUser); };
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
-
-  // Render
-  if (showVerifier) {
-      return <EmailVerifier onVerified={() => { setShowVerifier(false); }} />;
-  }
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div></div>;
   if (!user) return <Auth onLogin={handleLogin} />;

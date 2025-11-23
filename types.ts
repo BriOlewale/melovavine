@@ -2,20 +2,14 @@ export interface Sentence {
   id: number;
   english: string;
   projectId?: string;
-  
-  // Smart Queue Fields
-  priorityScore: number; // Calculated score (higher = show first)
-  difficulty: 1 | 2 | 3; // 1=Short/Easy, 3=Long/Complex
+  priorityScore: number; 
+  difficulty: 1 | 2 | 3; 
   length: number;
-  
-  // Translation State
   status: 'open' | 'needs_review' | 'approved';
-  translationCount: number; // How many people have translated this?
-  targetTranslations: number; // Goal (e.g., 2 or 3 before approval)
-  
-  // Distributed Locking
-  lockedBy?: string | null; // User ID
-  lockedUntil?: number | null; // Timestamp
+  translationCount: number; 
+  targetTranslations: number; 
+  lockedBy?: string | null; 
+  lockedUntil?: number | null; 
 }
 
 export interface TranslationHistoryEntry {
@@ -96,7 +90,6 @@ export interface User {
   isVerified?: boolean; 
   groupIds?: string[];
   effectivePermissions?: Permission[];
-  // Cache of translated sentence IDs to avoid re-fetching
   translatedSentenceIds?: number[]; 
 }
 
@@ -171,10 +164,6 @@ export interface SystemSettings {
   geminiApiKey?: string;
   showDemoBanner: boolean;
   maintenanceMode: boolean;
-  // EmailJS Configuration
-  emailJsServiceId?: string;
-  emailJsTemplateId?: string;
-  emailJsPublicKey?: string;
 }
 
 export interface AppState {
