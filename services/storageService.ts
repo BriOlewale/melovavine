@@ -39,8 +39,6 @@ export const StorageService = {
           const now = Date.now();
 
           // Strategy 1: High Priority Open Tasks
-          // We fetch a LARGE batch (500) to ensure we skip past the ones the user has already done.
-          // This is a trade-off: slightly more read operations (500 reads), but guarantees finding a task.
           const qPriority = query(
               sentencesRef, 
               where('status', '==', 'open'),
@@ -53,20 +51,13 @@ export const StorageService = {
 
           // Helper to find a valid task from a list
           const findValid = (list: Sentence[]) => {
-              // Randomize list slightly so users don't fight for the exact same top 1
               const shuffled = list.sort(() => 0.5 - Math.random());
               
               return shuffled.find(s => {
-                  // Check local session skip
                   if (excludedIds.includes(s.id)) return false;
-                  
-                  // Check lock
                   const isLocked = s.lockedBy && s.lockedBy !== user.id && s.lockedUntil && s.lockedUntil > now;
                   if (isLocked) return false;
-                  
-                  // Check history (already translated by me?)
                   if (user.translatedSentenceIds?.includes(s.id)) return false;
-                  
                   return true;
               });
           };
@@ -74,9 +65,7 @@ export const StorageService = {
           let validTask = findValid(candidates);
 
           // Strategy 2: Fallback - Any Open Tasks (Ignore Priority)
-          // If the top 500 were all done by me, just grab 100 random open ones
           if (!validTask) {
-              // console.log("Priority queue empty/skipped, trying fallback...");
               const qFallback = query(
                   sentencesRef, 
                   where('status', '==', 'open'),
@@ -320,7 +309,13 @@ export const StorageService = {
               return { success: false, message: 'User profile missing. Please contact support.' };
           }
           if (userData.isActive === false) { await signOut(auth); return { success: false, message: 'Account deactivated by admin.' }; }
-          if (!userData.isVerified && userData.role !== 'admin') { console.warn("User email not verified in database, allowing login for beta testing."); }
+          
+          // STRICT VERIFICATION CHECK (Re-enabled)
+          if (!userData.isVerified && userData.role !== 'admin') { 
+              await signOut(auth); 
+              return { success: false, message: 'Email not verified. Please check your inbox and click the link.' };
+          }
+          
           return { success: true, user: userData };
       } catch (e: any) {
           let msg = 'Login failed';
@@ -333,6 +328,8 @@ export const StorageService = {
           const userCred = await createUserWithEmailAndPassword(auth, email, password);
           const newUser: User = { id: userCred.user.uid, name, email, role: 'translator', isActive: true, isVerified: false, groupIds: ['g-trans'] };
           await setDoc(doc(db, 'users', newUser.id), newUser);
+          // Force sign out so they can't login immediately
+          await signOut(auth); 
           return { success: true, token: userCred.user.uid }; 
       } catch (e: any) {
           let msg = 'Registration failed';
