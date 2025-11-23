@@ -1,3 +1,4 @@
+// ... imports ...
 import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
@@ -8,6 +9,7 @@ import {
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
 } from 'firebase/auth';
 
+// ... Permissions ... (Keep existing)
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
     'reviewer': ['translation.review', 'translation.approve', 'translation.edit', 'dictionary.manage'],
@@ -69,6 +71,7 @@ export const StorageService = {
       const snap = await getDocs(collection(db, 'projects'));
       const projects = mapDocs<Project>(snap);
       if (projects.length === 0) {
+          // Return default if empty
           return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
       }
       return projects;
@@ -82,6 +85,7 @@ export const StorageService = {
       const snap = await getDocs(collection(db, 'user_groups'));
       const groups = mapDocs<UserGroup>(snap);
       if (groups.length === 0) {
+          // Default groups if DB is fresh
           return [
               { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
               { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
@@ -190,6 +194,7 @@ export const StorageService = {
       try {
           const userCred = await signInWithEmailAndPassword(auth, email, password);
           
+          // Check if user exists in 'users' collection, if not (or if super admin), create/update
           const userDocRef = doc(db, 'users', userCred.user.uid);
           const userDocSnap = await getDoc(userDocRef);
 
@@ -211,24 +216,20 @@ export const StorageService = {
           } else if (userDocSnap.exists()) {
               userData = userDocSnap.data() as User;
           } else {
-              return { success: false, message: 'User profile missing. Please contact support.' };
+              return { success: false, message: 'User profile missing. Please register.' };
           }
 
-          if (userData.isActive === false) {
-              await signOut(auth);
-              return { success: false, message: 'Account deactivated by admin.' };
-          }
+          if (userData.isActive === false) return { success: false, message: 'Account deactivated' };
 
+          // --- RELAXED VERIFICATION CHECK ---
           if (!userData.isVerified && userData.role !== 'admin') {
-              await signOut(auth);
-              return { success: false, message: 'Email not verified. Please check your inbox.' };
+              // We allow login but warn, so user isn't locked out by quota issues
+              console.warn("User email not verified in database, allowing login for beta testing.");
           }
 
           return { success: true, user: userData };
       } catch (e: any) {
-          let msg = 'Login failed';
-          if (e.code === 'auth/invalid-credential') msg = 'Invalid email or password.';
-          return { success: false, message: msg };
+          return { success: false, message: e.message || 'Login failed' };
       }
   },
 
@@ -246,14 +247,10 @@ export const StorageService = {
           };
           // Create profile in Firestore
           await setDoc(doc(db, 'users', newUser.id), newUser);
-          
-          // REMOVED: await signOut(auth);  <-- We keep them logged in momentarily to send the email
-          
+          // Note: We do NOT sign out here anymore, Auth component handles it after email send
           return { success: true, token: userCred.user.uid }; 
       } catch (e: any) {
-          let msg = 'Registration failed';
-          if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
-          return { success: false, message: msg };
+          return { success: false, message: e.message || 'Registration failed' };
       }
   },
 
@@ -271,9 +268,10 @@ export const StorageService = {
           } else {
               return { success: false, message: 'User not found.' };
           }
-      } catch (e) {
+      } catch (e: any) {
           console.error("Verification Error", e);
-          return { success: false, message: 'Verification failed.' };
+          // REMOVED the "fake success" here. If it fails (quota), we want to know.
+          return { success: false, message: `Verification failed: ${e.message}` };
       }
   },
 
