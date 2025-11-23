@@ -64,10 +64,10 @@ const App: React.FC = () => {
       if (verifyToken) {
           StorageService.verifyEmail(verifyToken).then(res => {
               if (res.success) {
-                  alert("Email verified successfully! You can now log in.");
+                  alert("✅ " + res.message); // Show specific success message
                   window.history.replaceState({}, document.title, window.location.pathname);
               } else {
-                  alert("Verification failed.");
+                  alert("❌ " + res.message); // Show specific error message (e.g., Quota Exceeded)
               }
           });
       }
@@ -145,11 +145,21 @@ const App: React.FC = () => {
       setWordTranslations(prev => [...prev, newWT]);
   };
 
+  const handleDeleteWord = async (wordId: string) => {
+      if (!user) return;
+      try {
+          await StorageService.deleteWord(wordId);
+          setWords(prev => prev.filter(w => w.id !== wordId));
+      } catch (e: any) {
+          console.error("Delete word failed", e);
+          alert("Failed to delete word: " + e.message);
+      }
+  };
+
   const handleReviewAction = async (translationId: string, status: 'approved' | 'rejected', feedback?: string) => {
       const translation = translations.find(t => t.id === translationId);
       if (translation && user) {
           try {
-              // FIX: Firestore cannot store 'undefined'. Ensure we use null or a string.
               const safeFeedback = feedback || null;
 
               const historyEntry = { 
@@ -167,11 +177,10 @@ const App: React.FC = () => {
                   feedback: safeFeedback, 
                   history: [...(translation.history || []), historyEntry as any] 
               };
-              // Await ensuring errors are caught by caller
               await handleSaveTranslation(updated);
           } catch (error) {
               console.error("Review Action Failed:", error);
-              throw error; // Re-throw to let the Reviewer component handle the UI alert
+              throw error; 
           }
       }
   };
@@ -228,7 +237,7 @@ const App: React.FC = () => {
             {currentPage === 'dashboard' && <Dashboard sentences={sentences} translations={translations} language={targetLanguage} users={allUsers} />}
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
             {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} />}
-            {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} />}
+            {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} user={user} onDeleteWord={handleDeleteWord} />}
             {currentPage === 'corpus' && <Corpus sentences={sentences} translations={translations} users={allUsers} targetLanguage={targetLanguage} user={user} onVote={handleVote} onAddComment={handleAddComment} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
             {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-4 bg-red-50 text-red-700">Access Denied</div>)}
