@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Word, WordTranslation, User } from '../types';
-import { Card, Input, Button } from './UI';
+import { Card, Input } from './UI';
 import { StorageService } from '../services/storageService';
 
 export const Dictionary: React.FC<{ words: Word[], wordTranslations: WordTranslation[], user: User | null, onDeleteWord: (id: string) => void }> = ({ words, wordTranslations, user, onDeleteWord }) => {
