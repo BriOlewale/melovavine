@@ -15,7 +15,7 @@ const Icons = {
   Users: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
 };
 
-export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translation[]; language: Language; users: User[] }> = ({ sentences, translations, language, users }) => {
+export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translation[]; language: Language; users: User[]; onNavigate: (page: string) => void }> = ({ sentences, translations, language, users, onNavigate }) => {
   const langTrans = translations.filter(t => t.languageCode === language.code);
   const approved = langTrans.filter(t => t.status === 'approved').length;
   const pending = langTrans.filter(t => t.status === 'pending').length;
@@ -168,7 +168,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                            </div>
                            <h3 className="text-xl font-bold mb-2">Start Translating</h3>
                            <p className="text-brand-50 text-sm mb-6">Help us reach 100% completion. Every sentence counts!</p>
-                           <Button size="sm" className="bg-white text-brand-600 hover:bg-brand-50 border-none shadow-none w-full sm:w-auto">Go to Translator →</Button>
+                           <Button size="sm" className="bg-white text-brand-600 hover:bg-brand-50 border-none shadow-none w-full sm:w-auto" onClick={() => onNavigate('translate')}>Go to Translator →</Button>
                        </div>
                        <div className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full bg-white/10"></div>
                    </div>
@@ -180,7 +180,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                            </div>
                            <h3 className="text-xl font-bold text-slate-800 mb-2">Review Pending</h3>
                            <p className="text-slate-500 text-sm mb-6">There are {pending} sentences waiting for your approval.</p>
-                           <Button size="sm" variant="secondary" className="w-full">Go to Reviews</Button>
+                           <Button size="sm" variant="secondary" className="w-full" onClick={() => onNavigate('review')}>Go to Reviews</Button>
                        </div>
                    </div>
                </div>
@@ -225,7 +225,7 @@ export const Dashboard: React.FC<{ sentences: Sentence[]; translations: Translat
                    )}
                    
                    <div className="mt-6 pt-4 border-t border-slate-50">
-                       <Button variant="ghost" fullWidth className="text-sm text-slate-500 hover:text-brand-600">View Leaderboard</Button>
+                       <Button variant="ghost" fullWidth className="text-sm text-slate-500 hover:text-brand-600" onClick={() => onNavigate('leaderboard')}>View Leaderboard</Button>
                    </div>
                </Card>
            </div>
