@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserGroup, Project, AuditLog } from '../types'; // Removed unused 'Permission'
+import { User, UserGroup, Project, AuditLog } from '../types'; 
 import { Button, Card, Input, Modal, Badge } from './UI';
-import { StorageService, ALL_PERMISSIONS } from '../services/storageService'; // Removed ALL_PERMISSIONS import if unused
+import { StorageService } from '../services/storageService'; // Removed ALL_PERMISSIONS
 
 // Removed 'sentences' from Props because it wasn't being used
 export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImportSentences }) => {
