@@ -1,13 +1,10 @@
-
-import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry } from '../types';
+import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry, Report } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
   collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc, getCountFromServer, where, runTransaction 
 } from 'firebase/firestore';
 // @ts-ignore
-import { 
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification
-} from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification } from 'firebase/auth';
 
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
@@ -167,7 +164,6 @@ export const StorageService = {
       return mapDocs<SpellingSuggestion>(snap);
   },
 
-  // Handles Accepting or Rejecting a suggestion
   resolveSpellingSuggestion: async (
       suggestionId: string, 
       status: 'accepted' | 'rejected', 
@@ -181,14 +177,13 @@ export const StorageService = {
           const suggestion = suggSnap.data() as SpellingSuggestion;
 
           if (status === 'accepted') {
-              // If accepted, update the original translation
               const transRef = doc(db, 'translations', suggestion.translationId);
               const transSnap = await transaction.get(transRef);
               if (!transSnap.exists()) throw "Original translation not found";
               
               const trans = transSnap.data() as Translation;
               
-              // Create history entry
+              // Create version history entry
               const historyEntry: TranslationHistoryEntry = {
                   timestamp: Date.now(),
                   action: 'spell_correction',
@@ -204,14 +199,12 @@ export const StorageService = {
 
               const newHistory = [...(trans.history || []), historyEntry];
 
-              // Update translation
               transaction.update(transRef, {
                   text: suggestion.suggestedText,
                   history: newHistory
               });
           }
 
-          // Update suggestion status
           transaction.update(suggRef, {
               status,
               resolvedAt: Date.now(),
@@ -222,17 +215,48 @@ export const StorageService = {
       });
   },
 
+  // --- COMMUNITY REPORTING (NEW) ---
+
+  createReport: async (report: Report) => {
+      await setDoc(doc(db, 'reports', report.id), report);
+  },
+
+  getReports: async (): Promise<Report[]> => {
+      const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+      const snap = await getDocs(q);
+      return mapDocs<Report>(snap);
+  },
+
   // --- DATA & QUEUE LOGIC ---
   
   getSmartQueueTask: async (user: User, excludedIds: number[] = []): Promise<Sentence | null> => {
       try {
           const sentencesRef = collection(db, 'sentences');
           const now = Date.now();
-          const qPriority = query(sentencesRef, where('status', '==', 'open'), orderBy('priorityScore', 'desc'), limit(500));
+          
+          // EXPERIENCED USER LOGIC: Give harder sentences to pros
+          const isExperienced = (user.translatedSentenceIds?.length || 0) > 200;
+          
+          // Base Query
+          let qPriority = query(
+              sentencesRef, 
+              where('status', '==', 'open'),
+              orderBy('priorityScore', 'desc'),
+              limit(500)
+          );
+          
           let snap = await getDocs(qPriority);
           let candidates = snap.docs.map(d => d.data() as Sentence);
 
+          // If experienced, prefer difficulty 2/3. If new, prefer 1.
+          if (isExperienced) {
+             candidates.sort((a, b) => (b.difficulty || 1) - (a.difficulty || 1));
+          } else {
+             candidates.sort((a, b) => (a.difficulty || 1) - (b.difficulty || 1));
+          }
+
           const findValid = (list: Sentence[]) => {
+              // Slight shuffle to reduce collisions
               const shuffled = list.sort(() => 0.5 - Math.random());
               return shuffled.find(s => {
                   if (excludedIds.includes(s.id)) return false;
@@ -244,6 +268,7 @@ export const StorageService = {
           };
 
           let validTask = findValid(candidates);
+          
           if (!validTask) {
               const qFallback = query(sentencesRef, where('status', '==', 'open'), limit(100));
               snap = await getDocs(qFallback);
@@ -289,31 +314,46 @@ export const StorageService = {
   submitTranslation: async (translation: Translation, user: User) => {
       const batch = writeBatch(db);
       const transRef = doc(db, 'translations', translation.id);
+      
+      // Persist Translation (including history array if present)
       batch.set(transRef, translation);
-      const sentenceRef = doc(db, 'sentences', translation.sentenceId.toString());
-      const sSnap = await getDoc(sentenceRef);
-      if (sSnap.exists()) {
-          const sData = sSnap.data() as Sentence;
-          const newCount = (sData.translationCount || 0) + 1;
-          const updates: any = { lockedBy: null, lockedUntil: null, translationCount: newCount };
-          if (newCount >= (sData.targetTranslations || TARGET_REDUNDANCY)) {
-              updates.status = 'needs_review';
-              updates.priorityScore = 0; 
+      
+      // If this is a NEW translation (status pending), update sentence stats
+      if (translation.status === 'pending') {
+          const sentenceRef = doc(db, 'sentences', translation.sentenceId.toString());
+          const sSnap = await getDoc(sentenceRef);
+          if (sSnap.exists()) {
+              const sData = sSnap.data() as Sentence;
+              const newCount = (sData.translationCount || 0) + 1;
+              const updates: any = { lockedBy: null, lockedUntil: null, translationCount: newCount };
+              if (newCount >= (sData.targetTranslations || TARGET_REDUNDANCY)) {
+                  updates.status = 'needs_review';
+                  updates.priorityScore = 0; 
+              }
+              batch.update(sentenceRef, updates);
           }
-          batch.update(sentenceRef, updates);
+          const userRef = doc(db, 'users', user.id);
+          const newHistory = [...(user.translatedSentenceIds || []), translation.sentenceId];
+          const uniqueHistory = Array.from(new Set(newHistory));
+          batch.update(userRef, { translatedSentenceIds: uniqueHistory });
       }
-      const userRef = doc(db, 'users', user.id);
-      const newHistory = [...(user.translatedSentenceIds || []), translation.sentenceId];
-      const uniqueHistory = Array.from(new Set(newHistory));
-      batch.update(userRef, { translatedSentenceIds: uniqueHistory });
+      
       await batch.commit();
+  },
+  
+  // --- SAVE TRANSLATION (GENERIC UPDATE) ---
+  // Used for edits, reviews, etc.
+  saveTranslation: async (translation: Translation) => {
+      // Directly overwrite/merge. This respects whatever fields (status, history, feedback) are in the object.
+      await setDoc(doc(db, 'translations', translation.id), translation, { merge: true });
   },
 
   calculateInitialPriority: (sentence: string): number => {
       let score = 100;
       const len = sentence.length;
-      if (len > 10 && len < 50) score += 20;
-      if (len < 10) score += 10;
+      // Simple difficulty logic
+      if (len < 20) score += 20; // Short = Easy = High Priority for new users
+      if (len > 100) score -= 10; // Long = Hard = Lower Priority
       return score;
   },
   
@@ -337,6 +377,11 @@ export const StorageService = {
         chunk.forEach(s => {
             if (s.id) {
                 const ref = doc(db, 'sentences', s.id.toString());
+                // AUTO-CALCULATE DIFFICULTY
+                let diff: 1 | 2 | 3 = 2;
+                if (s.english.length < 20) diff = 1;
+                if (s.english.length > 100) diff = 3;
+
                 const enhancedSentence: Sentence = {
                     ...s,
                     priorityScore: StorageService.calculateInitialPriority(s.english),
@@ -345,7 +390,7 @@ export const StorageService = {
                     targetTranslations: TARGET_REDUNDANCY,
                     lockedBy: null,
                     lockedUntil: null,
-                    difficulty: s.english.length < 20 ? 1 : s.english.length > 100 ? 3 : 2,
+                    difficulty: diff, // NEW FIELD
                     length: s.english.length
                 };
                 batch.set(ref, enhancedSentence);
@@ -360,9 +405,6 @@ export const StorageService = {
   getTranslations: async (): Promise<Translation[]> => {
     const snap = await getDocs(collection(db, 'translations'));
     return mapDocs<Translation>(snap);
-  },
-  saveTranslation: async (translation: Translation) => {
-    await setDoc(doc(db, 'translations', translation.id), translation);
   },
   deleteTranslation: async (id: string) => {
     await deleteDoc(doc(db, 'translations', id));

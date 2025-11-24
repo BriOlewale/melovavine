@@ -12,9 +12,10 @@ interface CorpusProps {
   user: User;
   onVote: (id: string, type: 'up' | 'down') => void;
   onAddComment: (id: string, text: string) => void;
+  onFlag: (type: 'sentence' | 'translation', id: string | number) => void;
 }
 
-export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, targetLanguage, user, onVote, onAddComment }) => {
+export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, targetLanguage, user, onVote, onAddComment, onFlag }) => {
   const [view, setView] = useState<'translations' | 'sentences'>('translations'); 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);

@@ -1,16 +1,16 @@
-
 import React, { useState, useEffect } from 'react';
 import { Sentence, Translation, User, Language, SpellingSuggestion } from '../types';
 import { Button, Card, Badge, toast, Skeleton, EmptyState } from './UI';
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
+import { TranslationHistoryModal } from './TranslationHistoryModal';
 
 interface ReviewerProps {
   sentences: Sentence[];
   translations: Translation[];
   user: User;
   targetLanguage: Language;
-  onReviewAction: (id: string, status: 'approved' | 'rejected', feedback?: string) => Promise<void>;
+  onReviewAction: (id: string, status: 'approved' | 'rejected' | 'needs_attention', feedback?: string) => Promise<void>;
   onUpdateTranslation: (t: Translation) => Promise<void>;
 }
 
@@ -19,11 +19,17 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   const [spellingSuggestions, setSpellingSuggestions] = useState<SpellingSuggestion[]>([]);
   
   // Translation Review State
-  const pending = translations.filter(t => t.languageCode === targetLanguage.code && t.status === 'pending');
+  // Filter for pending OR needs_attention (so reviewers can re-review fixes)
+  const pending = translations.filter(t => t.languageCode === targetLanguage.code && (t.status === 'pending' || t.status === 'needs_attention'));
   const [idx] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  
+  // History Modal
+  const [viewHistory, setViewHistory] = useState<Translation | null>(null);
   
   const current = pending[idx];
+  // Safely find sentence, or fallback if missing from local cache
   const sentence = current ? sentences.find(s => s.id === current.sentenceId) : null;
   
   const canApprove = StorageService.hasPermission(user, 'translation.approve');
@@ -45,11 +51,19 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       }
   };
 
-  const handleAction = async (id: string, status: 'approved' | 'rejected', feedback?: string) => {
+  const handleAction = async (status: 'approved' | 'rejected' | 'needs_attention') => {
+      if (!current) return;
+
+      if ((status === 'rejected' || status === 'needs_attention') && !feedback.trim()) {
+          toast.error("Please provide feedback for rejection or attention requests.");
+          return;
+      }
+
       setIsProcessing(true);
       try {
-          await onReviewAction(id, status, feedback);
-          toast.success(status === 'approved' ? "Translation approved! 🎉" : "Translation rejected.");
+          await onReviewAction(current.id, status, feedback);
+          toast.success(status === 'approved' ? "Translation approved! 🎉" : "Feedback submitted.");
+          setFeedback(''); // Clear feedback on success
       } catch (e: any) {
           console.error("Review Error", e);
           if (e.code === 'resource-exhausted') {
@@ -74,7 +88,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       toast.info("Analyzing with Gemini...");
       try {
           const res = await validateTranslation(sourceText, current.text, targetLanguage); 
-          await onUpdateTranslation({...current, aiQualityScore: res.score}); 
+          await onUpdateTranslation({...current, aiQualityScore: res.score, aiQualityFeedback: res.feedback}); 
           toast.success(`AI Score: ${res.score}/10`);
       } catch(e) {
           toast.error("AI Check failed.");
@@ -91,7 +105,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
           await StorageService.resolveSpellingSuggestion(suggestion.id, status, user);
           toast.success(`Correction ${status}!`);
           setSpellingSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
-          // Ideally refresh translations here too, but App sync might catch it eventually.
       } catch (error) {
           console.error(error);
           toast.error("Failed to resolve suggestion.");
@@ -128,24 +141,30 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                  !current ? <Skeleton className="h-96 w-full rounded-3xl" /> : (
                     <Card className="!p-0 !rounded-[32px] overflow-hidden shadow-2xl shadow-slate-200/60 border-0">
                         <div className="bg-slate-50 p-8 border-b border-slate-100">
-                            <div className="text-slate-400 text-xs font-extrabold uppercase tracking-widest mb-3">English Source</div>
+                            <div className="flex justify-between mb-3">
+                                <div className="text-slate-400 text-xs font-extrabold uppercase tracking-widest">English Source</div>
+                                <button onClick={() => setViewHistory(current)} className="text-xs font-bold text-brand-600 hover:underline">View History</button>
+                            </div>
                             <div className="text-2xl font-medium text-slate-800 leading-relaxed">
-                                {sentence ? sentence.english : <span className="italic text-slate-400">Loading source text for ID #{current.sentenceId}...</span>}
+                                {sentence ? sentence.english : <span className="italic text-slate-400">Loading source text for ID #{current.sentenceId}... (Data not in cache)</span>}
                             </div>
                         </div>
 
                         <div className="p-8 bg-white">
                             <div className="flex justify-between items-start mb-3">
                                 <div className="text-brand-500 text-xs font-extrabold uppercase tracking-widest">Translation ({targetLanguage.name})</div>
-                                {current.aiQualityScore && (
-                                    <Badge color={current.aiQualityScore > 7 ? 'green' : 'red'}>AI: {current.aiQualityScore}/10</Badge>
-                                )}
+                                <div className="flex gap-2">
+                                    {current.status === 'needs_attention' && <Badge color="yellow">Needs Attention</Badge>}
+                                    {current.aiQualityScore && (
+                                        <Badge color={current.aiQualityScore > 7 ? 'green' : 'red'}>AI: {current.aiQualityScore}/10</Badge>
+                                    )}
+                                </div>
                             </div>
                             <div className="text-3xl font-bold text-slate-900 leading-tight mb-8">
                                 {current.text}
                             </div>
 
-                            <div className="flex items-center gap-3 text-sm text-slate-500 bg-slate-50 p-3 rounded-xl">
+                            <div className="flex items-center gap-3 text-sm text-slate-500 bg-slate-50 p-3 rounded-xl mb-6">
                                 <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs">
                                     {current.translatorId.substring(0,2)}
                                 </div>
@@ -154,20 +173,36 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                                     <span className="text-xs">{new Date(current.timestamp).toLocaleDateString()}</span>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="p-6 bg-slate-50/50 border-t border-slate-100 grid grid-cols-3 gap-3">
-                            <Button variant="danger" size="lg" onClick={() => handleAction(current.id, 'rejected', 'Needs work')} disabled={isProcessing || !canApprove} className="w-full">
-                                Reject
-                            </Button>
-                            <Button variant="secondary" size="lg" onClick={handleAI} disabled={isProcessing || !sentence} className="w-full !px-0">
-                                AI Check
-                            </Button>
-                            <Button variant="primary" size="lg" onClick={() => handleAction(current.id, 'approved')} disabled={isProcessing || !canApprove} className="w-full bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
-                                Approve
-                            </Button>
+                            {/* Feedback Input */}
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Reviewer Feedback (Required for Rejection)</label>
+                                <textarea 
+                                    className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                                    rows={2}
+                                    placeholder="Add comments or corrections here..."
+                                    value={feedback}
+                                    onChange={e => setFeedback(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Action Bar */}
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                <Button variant="secondary" onClick={handleAI} disabled={isProcessing || !sentence} className="sm:col-span-1">
+                                    AI Check
+                                </Button>
+                                <Button variant="secondary" onClick={() => handleAction('needs_attention')} disabled={isProcessing || !canApprove} className="sm:col-span-1 text-amber-600 border-amber-200 hover:bg-amber-50">
+                                    Flag
+                                </Button>
+                                <Button variant="danger" onClick={() => handleAction('rejected')} disabled={isProcessing || !canApprove} className="sm:col-span-1">
+                                    Reject
+                                </Button>
+                                <Button variant="primary" onClick={() => handleAction('approved')} disabled={isProcessing || !canApprove} className="sm:col-span-1 bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
+                                    Approve
+                                </Button>
+                            </div>
+                            {!canApprove && <div className="mt-4 text-center text-xs text-rose-500 font-bold">View Only Mode (No Permissions)</div>}
                         </div>
-                        {!canApprove && <div className="bg-rose-50 text-rose-600 text-center p-2 text-xs font-bold">View Only Mode</div>}
                     </Card>
                  )
              )}
@@ -214,6 +249,13 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                ))}
            </div>
        )}
+
+       {/* History Modal */}
+       <TranslationHistoryModal 
+          isOpen={!!viewHistory} 
+          onClose={() => setViewHistory(null)} 
+          translation={viewHistory} 
+       />
     </div>
   );
 };

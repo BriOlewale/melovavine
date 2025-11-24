@@ -19,9 +19,10 @@ interface TranslatorProps {
   onSaveWordTranslation: (wt: string, nt: string, t: string, n: string, id: number) => void;
   onAddComment: (id: string, txt: string) => void;
   onVote: (id: string, type: 'up' | 'down') => void;
+  onFlag: (type: 'sentence' | 'translation', id: string | number) => void;
 }
 
-export const Translator: React.FC<TranslatorProps> = ({ translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote }) => {
+export const Translator: React.FC<TranslatorProps> = ({ translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote, onFlag }) => {
   const [currentTask, setCurrentTask] = useState<Sentence | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState('');

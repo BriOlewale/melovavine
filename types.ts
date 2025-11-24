@@ -1,10 +1,9 @@
-
 export interface Sentence {
   id: number;
   english: string;
   projectId?: string;
   priorityScore: number; 
-  difficulty: 1 | 2 | 3; 
+  difficulty: 1 | 2 | 3; // 1=Easy, 2=Medium, 3=Hard
   length: number;
   status: 'open' | 'needs_review' | 'approved';
   translationCount: number; 
@@ -15,9 +14,10 @@ export interface Sentence {
 
 export type TranslationHistoryAction = 
   | 'created' 
-  | 'updated' 
+  | 'edited' 
   | 'approved' 
   | 'rejected' 
+  | 'needs_attention'
   | 'spell_correction' 
   | 'status_change';
 
@@ -53,14 +53,30 @@ export interface Translation {
   votes: number;
   voteHistory?: Record<string, 'up' | 'down'>;
   isAiSuggested?: boolean;
-  status: 'pending' | 'approved' | 'rejected';
-  reviewedBy?: string;
-  reviewedAt?: number;
+  
+  // Enhanced Status & Review Fields
+  status: 'pending' | 'approved' | 'rejected' | 'needs_attention';
+  reviewedBy?: string | null;
+  reviewedAt?: number | null;
   feedback?: string | null;
+  
   history?: TranslationHistoryEntry[];
   comments?: Comment[];
   aiQualityScore?: number;
   aiQualityFeedback?: string;
+}
+
+export interface Report {
+   id: string;
+   type: 'sentence' | 'translation';
+   sentenceId?: number;
+   translationId?: string;
+   reportedBy: string;
+   reportedByName: string;
+   reason: string;
+   timestamp: number;
+   status: 'open' | 'reviewed';
+   adminNotes?: string;
 }
 
 export interface SpellingSuggestion {

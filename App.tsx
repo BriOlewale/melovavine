@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -11,19 +10,21 @@ import { CommunityHub } from './components/CommunityHub';
 import { Corpus } from './components/Corpus';
 import { Auth } from './components/Auth';
 import { StorageService } from './services/storageService';
-import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic } from './types';
+import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report } from './types';
 import { auth } from './services/firebaseConfig';
 // @ts-ignore
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './services/firebaseConfig';
-import { ToastContainer } from './components/UI';
+import { ToastContainer, toast } from './components/UI';
+import { ReportModal } from './components/ReportModal';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [showDemoBanner, setShowDemoBanner] = useState(false); 
+
   // Data State
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [totalSentenceCount, setTotalSentenceCount] = useState(0);
@@ -33,7 +34,10 @@ const App: React.FC = () => {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [forumTopics, setForumTopics] = useState<ForumTopic[]>([]);
-  const [showDemoBanner, setShowDemoBanner] = useState(false); 
+  
+  // Report Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ type: 'sentence' | 'translation', id: string | number } | null>(null);
 
   const targetLanguage = PNG_LANGUAGES[0];
 
@@ -63,10 +67,13 @@ const App: React.FC = () => {
           }
       };
 
+      // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
+              // Reload to check verification status
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
 
+              // SECURITY CHECK: Block unverified users (except Admin)
               if (firebaseUser.email !== 'brime.olewale@gmail.com' && !firebaseUser.emailVerified) {
                   console.warn("Blocked unverified user from auto-login.");
                   await StorageService.logout();
@@ -82,7 +89,6 @@ const App: React.FC = () => {
                   let userData = snap.data() as User;
                   
                   if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
-                      console.log("Self-healing: Promoting Brime to Admin...");
                       userData = {
                           ...userData,
                           role: 'admin',
@@ -115,16 +121,12 @@ const App: React.FC = () => {
   const handleImportSentences = async () => { window.location.reload(); };
   
   const handleSaveTranslation = async (translation: Translation) => {
-    // Optimistic Update for UI
+    // Optimistic Update
     setTranslations(prev => {
        const idx = prev.findIndex(t => t.id === translation.id);
        if (idx >= 0) { const copy = [...prev]; copy[idx] = translation; return copy; }
        return [...prev, translation];
     });
-    
-    // NOTE: We don't call StorageService.saveTranslation here for the Translator 
-    // because Translator component handles the submit/queue logic internally.
-    // But for Reviewer/Corpus edits, this is used.
     await StorageService.saveTranslation(translation);
   };
   
@@ -153,31 +155,48 @@ const App: React.FC = () => {
       }
   };
 
-  const handleReviewAction = async (translationId: string, status: 'approved' | 'rejected', feedback?: string) => {
+  // --- CENTRALIZED REVIEW HANDLER ---
+  const handleReviewAction = async (
+      translationId: string, 
+      status: 'approved' | 'rejected' | 'needs_attention', 
+      feedback?: string
+  ) => {
       const translation = translations.find(t => t.id === translationId);
-      if (translation && user) {
-          try {
-              const safeFeedback = feedback || null;
-              const historyEntry = { 
-                  timestamp: Date.now(), 
-                  action: status, 
-                  userId: user.id, 
-                  userName: user.name, 
-                  details: { feedback: safeFeedback } 
-              };
-              const updated: Translation = { 
-                  ...translation, 
-                  status: status, 
-                  reviewedBy: user.id, 
-                  reviewedAt: Date.now(), 
-                  feedback: safeFeedback, 
-                  history: [...(translation.history || []), historyEntry as any] 
-              };
-              await handleSaveTranslation(updated);
-          } catch (error) {
-              console.error("Review Action Failed:", error);
-              throw error; 
-          }
+      if (!translation || !user) {
+          console.error("Review action failed: Translation or User not found");
+          return;
+      }
+
+      try {
+          const safeFeedback = feedback || null;
+
+          const historyEntry: TranslationHistoryEntry = { 
+              timestamp: Date.now(), 
+              action: status, 
+              userId: user.id, 
+              userName: user.name, 
+              details: { 
+                  feedback: safeFeedback,
+                  oldText: translation.text,
+                  newText: translation.text
+              } 
+          };
+
+          const updated: Translation = { 
+              ...translation, 
+              status: status, 
+              reviewedBy: user.id, 
+              reviewedAt: Date.now(), 
+              feedback: safeFeedback, 
+              history: [...(translation.history || []), historyEntry] 
+          };
+
+          // Update State & Database
+          await handleSaveTranslation(updated);
+          
+      } catch (error) {
+          console.error("Review Action Failed:", error);
+          throw error; 
       }
   };
 
@@ -203,6 +222,37 @@ const App: React.FC = () => {
       if (translation) {
         const newComment: Comment = { id: crypto.randomUUID(), userId: user.id, userName: user.name, text, timestamp: Date.now() };
         handleSaveTranslation({ ...translation, comments: [...(translation.comments || []), newComment] });
+      }
+  };
+
+  // --- REPORTING ---
+  const handleFlag = (type: 'sentence' | 'translation', id: string | number) => {
+      setReportTarget({ type, id });
+      setIsReportModalOpen(true);
+  };
+
+  const submitReport = async (reason: string) => {
+      if (!user || !reportTarget) return;
+      
+      const report: Report = {
+          id: crypto.randomUUID(),
+          type: reportTarget.type,
+          sentenceId: reportTarget.type === 'sentence' ? (reportTarget.id as number) : undefined,
+          translationId: reportTarget.type === 'translation' ? (reportTarget.id as string) : undefined,
+          reportedBy: user.id,
+          reportedByName: user.name,
+          reason,
+          timestamp: Date.now(),
+          status: 'open'
+      };
+
+      try {
+          await StorageService.createReport(report);
+          toast.success("Report submitted. Thank you!");
+          setIsReportModalOpen(false);
+      } catch (error) {
+          console.error(error);
+          toast.error("Failed to submit report.");
       }
   };
   
@@ -233,14 +283,22 @@ const App: React.FC = () => {
         <div className="space-y-8">
             {currentPage === 'dashboard' && <Dashboard sentences={sentences} totalCount={totalSentenceCount} translations={translations} language={targetLanguage} users={allUsers} onNavigate={handleNavigate} />}
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
-            {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} />}
+            {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} onFlag={handleFlag} />}
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} user={user} onDeleteWord={handleDeleteWord} />}
-            {currentPage === 'corpus' && <Corpus sentences={sentences} translations={translations} users={allUsers} targetLanguage={targetLanguage} user={user} onVote={handleVote} onAddComment={handleAddComment} />}
+            {currentPage === 'corpus' && <Corpus sentences={sentences} translations={translations} users={allUsers} targetLanguage={targetLanguage} user={user} onVote={handleVote} onAddComment={handleAddComment} onFlag={handleFlag} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
             {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-8 text-center"><h3 className="text-xl font-bold text-slate-800">Access Denied</h3><p className="text-slate-500">You do not have permission to access this area.</p></div>)}
             {currentPage === 'admin' && (canAccessAdmin ? <AdminPanel onImportSentences={handleImportSentences} /> : <div className="p-8 text-center"><h3 className="text-xl font-bold text-slate-800">Access Denied</h3><p className="text-slate-500">Restricted to Administrators.</p></div>)}
         </div>
       </main>
+
+      {isReportModalOpen && (
+          <ReportModal 
+              isOpen={isReportModalOpen} 
+              onClose={() => setIsReportModalOpen(false)} 
+              onSubmit={submitReport} 
+          />
+      )}
     </div>
   );
 };
