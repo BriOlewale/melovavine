@@ -16,46 +16,55 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
       setError('');
       setIsLoading(true);
 
-      // SAFETY TIMEOUT: Force stop spinner after 15 seconds if backend hangs
-      const timeoutId = setTimeout(() => {
-          if (isLoading) {
-              setIsLoading(false);
-              setError("Request timed out. This usually happens when the Database Quota is exceeded for the day. Please try again tomorrow.");
-          }
-      }, 15000);
-
       try {
+        // Define the timeout promise that rejects after 15s
+        const timeoutPromise = new Promise<{success: boolean, message?: string}>((_, reject) => 
+            setTimeout(() => reject(new Error("Request timed out")), 15000)
+        );
+
+        let result: any;
+
         if (view === 'login') {
-            const res = await StorageService.login(email, password);
-            clearTimeout(timeoutId); // Clear timeout if successful
-            
-            if (res.success && res.user) {
-                onLogin(res.user);
+            // Race the login against the timeout
+            result = await Promise.race([
+                StorageService.login(email, password),
+                timeoutPromise
+            ]);
+
+            if (result.success && result.user) {
+                onLogin(result.user);
+                // Note: Loading stays true as App.tsx takes over, but unmounting cleans up
             } else {
-                setError(res.message || 'Error logging in');
+                setError(result.message || 'Error logging in');
+                setIsLoading(false);
             }
         } else if (view === 'register') {
-            const res = await StorageService.register(email, password, name);
-            clearTimeout(timeoutId); // Clear timeout if successful
+            // Race the register against the timeout
+            result = await Promise.race([
+                StorageService.register(email, password, name),
+                timeoutPromise
+            ]);
 
-            if (res.success) {
-                // Show "Check Inbox" screen
+            if (result.success) {
                 setView('sent');
+                setIsLoading(false);
             } else {
-                setError(res.message || 'Registration failed.');
+                setError(result.message || 'Registration failed.');
+                setIsLoading(false);
             }
         }
       } catch (err: any) {
-          clearTimeout(timeoutId);
-          console.error("Auth Error:", err);
-          setError(err.message || "An unexpected error occurred.");
-      } finally {
-          // Ensure loading always stops if we haven't hit the timeout logic
-          // We check if the timeout hasn't already triggered the error
-          setIsLoading((prev) => {
-              if (prev) return false; // Stop loading if still true
-              return prev;
-          });
+          console.error("Auth Flow Error:", err);
+          
+          let displayMsg = "An unexpected error occurred.";
+          if (err.message === "Request timed out") {
+             displayMsg = "System is busy (Database Quota Exceeded). Please try again tomorrow.";
+          } else if (err.message) {
+             displayMsg = err.message;
+          }
+          
+          setError(displayMsg);
+          setIsLoading(false);
       }
   };
 

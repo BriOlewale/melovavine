@@ -32,16 +32,27 @@ export const StorageService = {
   // --- AUTHENTICATION & USER MANAGEMENT ---
 
   login: async (email: string, password: string) => {
+      console.log('[login] Attempting login for:', email);
       try {
+          // 1. Authenticate
           const userCred = await signInWithEmailAndPassword(auth, email, password);
+          console.log('[login] Firebase Auth success. UID:', userCred.user.uid);
+          
+          // 2. Force reload to get fresh emailVerified status
           await userCred.user.reload();
+          const isVerified = userCred.user.emailVerified;
+          console.log('[login] Email Verified status:', isVerified);
 
+          // 3. Strict Verification Check (Admin Bypass)
           const isAdminEmail = email.toLowerCase() === 'brime.olewale@gmail.com';
-          if (!isAdminEmail && !userCred.user.emailVerified) {
+          
+          if (!isVerified && !isAdminEmail) {
+              console.warn('[login] Blocked: Email not verified.');
               await signOut(auth);
-              return { success: false, message: 'Please verify your email before signing in.' };
+              return { success: false, message: 'Please check your inbox and verify your email before signing in.' };
           }
 
+          // 4. Fetch Profile
           const userDocRef = doc(db, 'users', userCred.user.uid);
           const userDocSnap = await getDoc(userDocRef);
 
@@ -58,28 +69,36 @@ export const StorageService = {
                   groupIds: ['g-admin'],
                   effectivePermissions: ['*'] 
               };
+              // Self-heal admin profile
               await setDoc(userDocRef, userData, { merge: true });
           } else if (userDocSnap.exists()) {
               userData = userDocSnap.data() as User;
           } else {
+              console.error('[login] Profile missing in Firestore.');
               await signOut(auth);
-              return { success: false, message: 'User profile missing. Please contact support.' };
+              return { success: false, message: 'User profile not found. Please contact support.' };
           }
 
+          // 5. Check Active Status
           if (userData.isActive === false) {
+              console.warn('[login] Account is inactive.');
               await signOut(auth);
               return { success: false, message: 'Account deactivated by admin.' };
           }
 
-          if (userCred.user.emailVerified && userData.isVerified !== true) {
+          // 6. Sync Firestore isVerified field if needed
+          if (isVerified && userData.isVerified !== true) {
+               console.log('[login] Syncing isVerified status to Firestore...');
                await updateDoc(userDocRef, { isVerified: true });
                userData.isVerified = true;
           }
 
           userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
+          console.log('[login] Success. Role:', userData.role);
 
           return { success: true, user: userData };
       } catch (e: any) {
+          console.error('[login] Error:', e.code, e.message);
           let msg = 'Login failed';
           if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
               msg = 'Invalid email or password.';
@@ -89,8 +108,13 @@ export const StorageService = {
   },
 
   register: async (email: string, password: string, name: string) => {
+      console.log('[register] Starting registration for:', email);
       try {
+          // 1. Create User in Firebase Auth
           const userCred = await createUserWithEmailAndPassword(auth, email, password);
+          console.log('[register] Auth user created. UID:', userCred.user.uid);
+          
+          // 2. Create User Profile in Firestore
           const newUser: User = {
               id: userCred.user.uid,
               name,
@@ -100,14 +124,31 @@ export const StorageService = {
               isVerified: false, 
               groupIds: ['g-trans']
           };
+          
+          console.log('[register] Attempting to write Firestore profile...');
+          // This line typically hangs if Quota is exceeded
           await setDoc(doc(db, 'users', newUser.id), newUser);
-          try { await sendEmailVerification(userCred.user); } catch (emailError) { console.error("Failed to send verification email:", emailError); }
+          console.log('[register] Firestore profile saved.');
+
+          // 3. Send Verification Email
+          try {
+              console.log('[register] Sending verification email...');
+              await sendEmailVerification(userCred.user);
+              console.log('[register] Verification email sent.');
+          } catch (emailError) {
+              console.error("[register] Failed to send verification email:", emailError);
+          }
+
+          // 4. Sign Out Immediately
+          console.log('[register] Signing out to enforce verification flow.');
           await signOut(auth); 
+
           return { success: true }; 
       } catch (e: any) {
+          console.error('[register] Error:', e);
           let msg = 'Registration failed';
           if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
-          if (e.code === 'resource-exhausted') msg = 'System busy (Quota Exceeded). Please try again later.';
+          if (e.code === 'resource-exhausted') msg = 'System busy (Database Quota Exceeded). Please try again tomorrow.';
           return { success: false, message: msg };
       }
   },
@@ -121,7 +162,7 @@ export const StorageService = {
       alert("Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'.");
   },
 
-  // --- PERMISSIONS (RESTORED) ---
+  // --- PERMISSIONS ---
   getUserGroups: async (): Promise<UserGroup[]> => {
       const snap = await getDocs(collection(db, 'user_groups'));
       const groups = mapDocs<UserGroup>(snap);
