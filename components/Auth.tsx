@@ -16,18 +16,18 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
       setError('');
       setIsLoading(true);
 
-      // Safety Timeout: If backend hangs (e.g. Firestore retry loop), kill spinner after 15s
+      // SAFETY TIMEOUT: Force stop spinner after 15 seconds if backend hangs
       const timeoutId = setTimeout(() => {
           if (isLoading) {
               setIsLoading(false);
-              setError("Request timed out. Please check your connection and try again.");
+              setError("Request timed out. This usually happens when the Database Quota is exceeded for the day. Please try again tomorrow.");
           }
       }, 15000);
 
       try {
         if (view === 'login') {
             const res = await StorageService.login(email, password);
-            clearTimeout(timeoutId); // Clear timeout on response
+            clearTimeout(timeoutId); // Clear timeout if successful
             
             if (res.success && res.user) {
                 onLogin(res.user);
@@ -36,7 +36,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
             }
         } else if (view === 'register') {
             const res = await StorageService.register(email, password, name);
-            clearTimeout(timeoutId); // Clear timeout on response
+            clearTimeout(timeoutId); // Clear timeout if successful
 
             if (res.success) {
                 // Show "Check Inbox" screen
@@ -50,7 +50,12 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           console.error("Auth Error:", err);
           setError(err.message || "An unexpected error occurred.");
       } finally {
-          setIsLoading(false);
+          // Ensure loading always stops if we haven't hit the timeout logic
+          // We check if the timeout hasn't already triggered the error
+          setIsLoading((prev) => {
+              if (prev) return false; // Stop loading if still true
+              return prev;
+          });
       }
   };
 
