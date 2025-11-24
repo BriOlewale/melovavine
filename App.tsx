@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -64,10 +65,8 @@ const App: React.FC = () => {
 
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
-              // Reload to check verification status if it changed recently
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
 
-              // 1. SECURITY CHECK: Block unverified users (except Admin)
               if (firebaseUser.email !== 'brime.olewale@gmail.com' && !firebaseUser.emailVerified) {
                   console.warn("Blocked unverified user from auto-login.");
                   await StorageService.logout();
@@ -82,7 +81,6 @@ const App: React.FC = () => {
               if (snap.exists()) {
                   let userData = snap.data() as User;
                   
-                  // Force Admin for specific email
                   if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
                       console.log("Self-healing: Promoting Brime to Admin...");
                       userData = {
@@ -117,12 +115,17 @@ const App: React.FC = () => {
   const handleImportSentences = async () => { window.location.reload(); };
   
   const handleSaveTranslation = async (translation: Translation) => {
-    await StorageService.saveTranslation(translation);
+    // Optimistic Update for UI
     setTranslations(prev => {
        const idx = prev.findIndex(t => t.id === translation.id);
        if (idx >= 0) { const copy = [...prev]; copy[idx] = translation; return copy; }
        return [...prev, translation];
     });
+    
+    // NOTE: We don't call StorageService.saveTranslation here for the Translator 
+    // because Translator component handles the submit/queue logic internally.
+    // But for Reviewer/Corpus edits, this is used.
+    await StorageService.saveTranslation(translation);
   };
   
   const handleSaveWordTranslation = async (wordText: string, normalizedText: string, translation: string, notes: string, exampleSentenceId: number) => {

@@ -1,6 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { Sentence, Translation, User, Language } from '../types';
 import { Card, Input, Badge, Button } from './UI';
+import { SpellingCorrectionModal } from './SpellingCorrectionModal';
 
 interface CorpusProps {
   sentences: Sentence[];
@@ -13,12 +15,16 @@ interface CorpusProps {
 }
 
 export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, targetLanguage, user, onVote, onAddComment }) => {
-  const [view, setView] = useState<'translations' | 'sentences'>('translations'); // NEW TOGGLE
+  const [view, setView] = useState<'translations' | 'sentences'>('translations'); 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const itemsPerPage = 20;
+  
+  // Spelling Modal State
+  const [isSpellingModalOpen, setIsSpellingModalOpen] = useState(false);
+  const [selectedTranslationForEdit, setSelectedTranslationForEdit] = useState<Translation | null>(null);
 
   const sentenceMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -57,6 +63,11 @@ export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, 
           onAddComment(id, commentText);
           setCommentText('');
       }
+  };
+
+  const openSpellingModal = (t: Translation) => {
+      setSelectedTranslationForEdit(t);
+      setIsSpellingModalOpen(true);
   };
 
   return (
@@ -110,7 +121,7 @@ export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, 
                     ))}
                 </div>
             ) : (
-                // TRANSLATION LIST VIEW (Existing logic)
+                // TRANSLATION LIST VIEW
                 <div className="space-y-4">
                     {pageItems.map((t: any) => {
                         const voteStatus = t.voteHistory?.[user.id];
@@ -140,9 +151,15 @@ export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, 
                                         <span className="font-bold text-slate-700 min-w-[20px] text-center">{t.votes}</span>
                                         <button onClick={() => onVote(t.id, 'down')} className={`text-lg ${voteStatus === 'down' ? 'text-red-600' : 'text-gray-400 hover:text-red-500'}`}>▼</button>
                                 </div>
-                                <Button variant="ghost" size="sm" onClick={() => setExpandedRow(expandedRow === t.id ? null : t.id)}>
-                                    {expandedRow === t.id ? 'Close Discussion' : `Discussion (${t.comments?.length || 0})`}
-                                </Button>
+                                <div className="flex gap-2">
+                                    {/* Suggest Correction Button */}
+                                    <Button variant="ghost" size="sm" className="text-purple-600 hover:bg-purple-50" onClick={() => openSpellingModal(t)}>
+                                        ✏️ Suggest Fix
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => setExpandedRow(expandedRow === t.id ? null : t.id)}>
+                                        {expandedRow === t.id ? 'Close' : `Discussion (${t.comments?.length || 0})`}
+                                    </Button>
+                                </div>
                             </div>
 
                             {expandedRow === t.id && (
@@ -186,6 +203,15 @@ export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, 
           <span className="text-sm font-medium text-slate-600 bg-white px-4 py-2 rounded-lg border border-slate-200">Page {page} of {totalPages}</span>
           <Button variant="secondary" disabled={page === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Next</Button>
         </div>
+      )}
+
+      {isSpellingModalOpen && selectedTranslationForEdit && (
+          <SpellingCorrectionModal 
+            isOpen={isSpellingModalOpen} 
+            onClose={() => setIsSpellingModalOpen(false)} 
+            translation={selectedTranslationForEdit}
+            user={user}
+          />
       )}
     </div>
   );

@@ -1,3 +1,4 @@
+
 export interface Sentence {
   id: number;
   english: string;
@@ -12,15 +13,25 @@ export interface Sentence {
   lockedUntil?: number | null; 
 }
 
+export type TranslationHistoryAction = 
+  | 'created' 
+  | 'updated' 
+  | 'approved' 
+  | 'rejected' 
+  | 'spell_correction' 
+  | 'status_change';
+
 export interface TranslationHistoryEntry {
   timestamp: number;
-  action: 'created' | 'updated' | 'approved' | 'rejected';
+  action: TranslationHistoryAction;
   userId: string;
   userName: string;
   details?: {
     oldText?: string;
     newText?: string;
     feedback?: string | null;
+    reason?: string;
+    suggestionId?: string;
   };
 }
 
@@ -50,6 +61,22 @@ export interface Translation {
   comments?: Comment[];
   aiQualityScore?: number;
   aiQualityFeedback?: string;
+}
+
+export interface SpellingSuggestion {
+  id: string;
+  translationId: string;
+  originalText: string;
+  suggestedText: string;
+  reason?: string;
+  status: 'open' | 'accepted' | 'rejected';
+  createdAt: number;
+  createdByUserId: string;
+  createdByUserName: string;
+  resolvedAt?: number;
+  resolvedByUserId?: string;
+  resolvedByUserName?: string;
+  rejectionReason?: string;
 }
 
 export interface Word {

@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Sentence, Translation, User, Language, Word, WordTranslation } from '../types';
 import { Button, Card, toast, Skeleton, Badge } from './UI'; 
 import { getTranslationSuggestion } from '../services/geminiService';
 import { WordDefinitionModal } from './WordDefinitionModal';
 import { StorageService } from '../services/storageService';
+import { SpellingCorrectionModal } from './SpellingCorrectionModal';
 
 interface TranslatorProps {
   sentences: Sentence[]; 
@@ -28,6 +30,10 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  
+  // Spelling Modal
+  const [isSpellingModalOpen, setIsSpellingModalOpen] = useState(false);
+  const [selectedTranslationForEdit, setSelectedTranslationForEdit] = useState<Translation | null>(null);
 
   const processedIds = useRef<Set<number>>(new Set());
   const SESSION_GOAL = 10;
@@ -62,7 +68,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
           let attempts = 0;
           
           // Get list of IDs user has already translated from the loaded translations prop
-          // This acts as a client-side cache of "Done" items
           const myDoneIds = new Set(translations.filter(t => t.translatorId === user.id).map(t => t.sentenceId));
           
           while (attempts < 5) {
@@ -75,9 +80,7 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
               
               if (!task) break; 
               
-              // Check if we processed it in this session OR if we ever translated it before
               if (processedIds.current.has(task.id) || myDoneIds.has(task.id)) {
-                  // If we found a done task, add to processed so we don't fetch it again in loop
                   processedIds.current.add(task.id);
                   task = null; 
               } else {
@@ -90,8 +93,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
 
           if (!task && count === 0) {
               setErrorMsg("Database is empty. Please go to Admin Panel > Data Import to upload sentences.");
-          } else if (!task && count > 0) {
-              // No open tasks found
           }
           setCurrentTask(task);
       } catch (e: any) {
@@ -184,6 +185,11 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
           onAddComment(id, txt);
           setCommentInputs(prev => ({ ...prev, [id]: '' }));
       }
+  };
+
+  const openSpellingModal = (t: Translation) => {
+      setSelectedTranslationForEdit(t);
+      setIsSpellingModalOpen(true);
   };
 
   // SUCCESS STATE VIEW
@@ -355,8 +361,8 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
                            </button>
                         </div>
                      </div>
-                     <div className="mt-4 pt-3 border-t border-slate-200/60">
-                         <div className="flex gap-2">
+                     <div className="mt-4 pt-3 border-t border-slate-200/60 flex justify-between items-center">
+                         <div className="flex gap-2 flex-1">
                              <input 
                                 type="text" 
                                 placeholder="Add a comment..." 
@@ -367,6 +373,9 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
                              />
                              <Button size="sm" variant="secondary" onClick={() => submitComment(t.id)} disabled={!commentInputs[t.id]?.trim()}>Post</Button>
                          </div>
+                         <Button variant="ghost" size="sm" className="text-purple-600 hover:bg-purple-50 ml-2" onClick={() => openSpellingModal(t)}>
+                            ✏️ Suggest Fix
+                         </Button>
                      </div>
                   </Card>
                 );
@@ -375,6 +384,16 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
        )}
 
        {selectedWord && <WordDefinitionModal isOpen={!!selectedWord} onClose={() => setSelectedWord(null)} selectedWord={selectedWord.t} normalizedWord={selectedWord.n} existingTranslations={getExistingTranslations(selectedWord.n)} targetLanguage={targetLanguage} onSave={(t, n) => { onSaveWordTranslation(selectedWord.t, selectedWord.n, t, n, currentTask.id); setSelectedWord(null); }} />}
+       
+       {/* SPELLING MODAL */}
+       {isSpellingModalOpen && selectedTranslationForEdit && (
+          <SpellingCorrectionModal 
+            isOpen={isSpellingModalOpen} 
+            onClose={() => setIsSpellingModalOpen(false)} 
+            translation={selectedTranslationForEdit}
+            user={user}
+          />
+       )}
     </div>
   );
 };
