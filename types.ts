@@ -95,10 +95,56 @@ export interface SpellingSuggestion {
   rejectionReason?: string;
 }
 
+// Categories to organize dictionary words
+export type WordCategory =
+  | 'family'
+  | 'people'
+  | 'food'
+  | 'ocean'
+  | 'nature'
+  | 'body'
+  | 'animals'
+  | 'village'
+  | 'culture'
+  | 'emotion'
+  | 'numbers'
+  | 'colors'
+  | 'tools'
+  | 'places'
+  | 'time'
+  | 'other';
+
 export interface Word {
   id: string;
   text: string;
-  normalizedText: string;
+  
+  // Dictionary Enrichment
+  normalizedText?: string; // lower-cased version used for search
+  meanings?: string[]; // Hula or target-language meanings / glosses
+  categories?: WordCategory[]; // optional topic grouping
+  notes?: string; // optional cultural / usage note
+  frequency?: number; // how often this word appears in the corpus
+  
+  // Audit Metadata
+  createdAt?: number;
+  updatedAt?: number;
+  createdBy?: string;
+  language?: string; // Optional for future multi-lang support
+}
+
+export interface WordCorrection {
+  id: string;
+  wordId: string;
+  suggestedBy: string;     // userId
+  suggestedByName: string; // for display
+  suggestionType: 'meaning' | 'spelling' | 'category' | 'note';
+  oldValue: any;
+  newValue: any;
+  createdAt: number;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;      // userId
+  reviewedByName?: string;
+  reviewedAt?: number;
 }
 
 export interface WordTranslation {
