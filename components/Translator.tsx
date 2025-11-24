@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Sentence, Translation, User, Language, Word, WordTranslation } from '../types';
 import { Button, Card, toast, Skeleton, Badge } from './UI'; 
@@ -374,8 +373,12 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
                              />
                              <Button size="sm" variant="secondary" onClick={() => submitComment(t.id)} disabled={!commentInputs[t.id]?.trim()}>Post</Button>
                          </div>
-                         <Button variant="ghost" size="sm" className="text-purple-600 hover:bg-purple-50 ml-2" onClick={() => openSpellingModal(t)}>
-                            ✏️ Suggest Fix
+                         {/* FLAG BUTTON */}
+                         <Button variant="ghost" size="sm" className="text-slate-300 hover:text-red-500 ml-2" onClick={() => onFlag('translation', t.id)} title="Flag Issue">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-8a2 2 0 012-2h14a2 2 0 012 2v8l-6-6-6 6-6-6" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21V4a2 2 0 012-2h14a2 2 0 012 2v11l-6-6-6 6-6 6" /></svg>
+                         </Button>
+                         <Button variant="ghost" size="sm" className="text-purple-600 hover:bg-purple-50 ml-1" onClick={() => openSpellingModal(t)}>
+                            ✏️ Fix
                          </Button>
                      </div>
                   </Card>

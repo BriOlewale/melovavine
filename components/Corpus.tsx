@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Sentence, Translation, User, Language } from '../types';
 import { Card, Input, Badge, Button } from './UI';
@@ -117,7 +116,10 @@ export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, 
                                 <span className="text-xs font-mono text-slate-400 mr-3">#{item.id}</span>
                                 <span className="text-slate-800 font-medium">{item.english}</span>
                             </div>
-                            <Badge color="gray">Source</Badge>
+                            <div className="flex items-center gap-2">
+                                <Button size="sm" variant="ghost" className="text-slate-400 hover:text-red-500" onClick={() => onFlag('sentence', item.id)}>🚩</Button>
+                                <Badge color="gray">Source</Badge>
+                            </div>
                         </Card>
                     ))}
                 </div>
@@ -128,9 +130,14 @@ export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, 
                         const voteStatus = t.voteHistory?.[user.id];
                         return (
                         <Card key={t.id} className="flex flex-col gap-3">
-                            <div>
-                                <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">English Source</div>
-                                <p className="text-gray-900 font-medium">{sentenceMap.get(t.sentenceId) || <span className="italic text-slate-400">Loading sentence #{t.sentenceId}...</span>}</p>
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">English Source</div>
+                                    <p className="text-gray-900 font-medium">{sentenceMap.get(t.sentenceId) || <span className="italic text-slate-400">Loading sentence #{t.sentenceId}...</span>}</p>
+                                </div>
+                                <button onClick={() => onFlag('translation', t.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Flag Issue">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-8a2 2 0 012-2h14a2 2 0 012 2v8l-6-6-6 6-6-6" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21V4a2 2 0 012-2h14a2 2 0 012 2v11l-6-6-6 6-6 6" /></svg>
+                                </button>
                             </div>
                             <div className="border-l-2 border-brand-500 pl-3 bg-brand-50/30 p-2 rounded-r-lg">
                                 <div className="text-xs font-bold text-brand-600 uppercase tracking-wider mb-1">{targetLanguage.name}</div>
