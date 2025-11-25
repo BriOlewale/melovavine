@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserGroup, Project, AuditLog } from '../types'; 
+import { User, UserGroup, Project, AuditLog, Permission } from '../types'; 
 import { Button, Card, Input, Modal, Badge } from './UI';
-import { StorageService } from '../services/storageService'; 
+import { StorageService, ALL_PERMISSIONS } from '../services/storageService'; 
 
 export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImportSentences }) => {
   const [tab, setTab] = useState('users');
@@ -17,6 +17,12 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Modal State
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<UserGroup | null>(null);
+  
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
@@ -93,6 +99,24 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
       alert('Saved'); 
   };
 
+  const handleSaveGroup = async () => {
+      if (editingGroup) {
+          await StorageService.saveUserGroup(editingGroup);
+          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_GROUP', `Updated group: ${editingGroup.name}`);
+          setIsGroupModalOpen(false);
+          loadData();
+      }
+  };
+
+  const handleSaveProject = async () => {
+      if (editingProject) {
+          await StorageService.saveProject(editingProject);
+          if (currentUser) await StorageService.logAuditAction(currentUser, 'UPDATE_PROJECT', `Updated project: ${editingProject.name}`);
+          setIsProjectModalOpen(false);
+          loadData();
+      }
+  };
+
   const handleUpdateUser = async () => {
       if (editingUser) {
           await StorageService.updateUser(editingUser);
@@ -108,6 +132,15 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
           setResetPasswordUserId(null);
           setNewPassword('');
       }
+  };
+
+  const toggleGroupPermission = (perm: Permission) => {
+      if (!editingGroup) return;
+      const has = editingGroup.permissions.includes(perm);
+      const newPerms = has 
+          ? editingGroup.permissions.filter(p => p !== perm)
+          : [...editingGroup.permissions, perm];
+      setEditingGroup({ ...editingGroup, permissions: newPerms });
   };
 
   const NavButton = ({ id, label }: { id: string, label: string }) => (
@@ -222,26 +255,80 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
               </div>
           )}
           
-          {tab === 'settings' && (
-              <div className="max-w-xl space-y-6">
-                 <h2 className="text-2xl font-bold">System Settings</h2>
-                 <Card>
-                     <h3 className="text-lg font-medium mb-4">Artificial Intelligence</h3>
-                     <Input label="Google Gemini API Key" type="password" value={settings.geminiApiKey || ''} onChange={e => setSettings({...settings, geminiApiKey: e.target.value})} />
-                     <p className="text-xs text-gray-500 mt-2">Required for translation suggestions and quality scoring.</p>
-                 </Card>
-                 <Card>
-                     <h3 className="text-lg font-medium mb-4">General</h3>
-                     <label className="flex items-center space-x-2">
-                        <input type="checkbox" checked={settings.showDemoBanner} onChange={e => setSettings({...settings, showDemoBanner: e.target.checked})} />
-                        <span>Show "Demo Mode" Banner</span>
-                     </label>
-                 </Card>
-                 <div className="pt-4"><Button onClick={saveSettings} fullWidth>Save All Settings</Button></div>
+          {tab === 'groups' && (
+              <div>
+                 <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold">Groups & Permissions</h2>
+                    <Button onClick={() => { setEditingGroup({ id: crypto.randomUUID(), name: '', permissions: [], description: '' }); setIsGroupModalOpen(true); }}>Create Group</Button>
+                 </div>
+                 <div className="grid gap-4">
+                     {groups.map(g => (
+                         <Card key={g.id} className="flex flex-col">
+                             <div className="flex justify-between items-start mb-2">
+                                 <div>
+                                    <h3 className="text-lg font-bold">{g.name}</h3>
+                                    <p className="text-sm text-gray-500">{g.description}</p>
+                                 </div>
+                                 <Button variant="ghost" onClick={() => { setEditingGroup(g); setIsGroupModalOpen(true); }}>Edit</Button>
+                             </div>
+                             <div className="mt-2 flex flex-wrap gap-1">
+                                 {g.permissions.includes('*') 
+                                     ? <Badge color="purple">ALL ACCESS (Super Admin)</Badge>
+                                     : g.permissions.slice(0, 8).map(p => <Badge key={p} color="gray">{p}</Badge>)
+                                 }
+                                 {g.permissions.length > 8 && <span className="text-xs text-gray-500">+{g.permissions.length - 8} more</span>}
+                             </div>
+                         </Card>
+                     ))}
+                 </div>
               </div>
           )}
 
-          {/* Re-enabling Data & Logs tabs */}
+          {tab === 'projects' && (
+              <div>
+                 <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold">Projects</h2>
+                    <Button onClick={() => { setEditingProject({ id: crypto.randomUUID(), name: '', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }); setIsProjectModalOpen(true); }}>New Project</Button>
+                 </div>
+                 <div className="hidden md:block bg-white border rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                             <tr>
+                                <th className="px-6 py-3 text-left text-xs uppercase text-gray-500">Project Name</th>
+                                <th className="px-6 py-3 text-left text-xs uppercase text-gray-500">Language</th>
+                                <th className="px-6 py-3 text-left text-xs uppercase text-gray-500">Status</th>
+                                <th className="px-6 py-3 text-right text-xs uppercase text-gray-500">Actions</th>
+                             </tr>
+                        </thead>
+                        <tbody>
+                            {projects.map(p => (
+                                <tr key={p.id}>
+                                    <td className="px-6 py-4 font-medium">{p.name}</td>
+                                    <td className="px-6 py-4 uppercase">{p.targetLanguageCode}</td>
+                                    <td className="px-6 py-4"><Badge color={p.status === 'active' ? 'green' : 'gray'}>{p.status}</Badge></td>
+                                    <td className="px-6 py-4 text-right">
+                                        <button onClick={() => { setEditingProject(p); setIsProjectModalOpen(true); }} className="text-brand-600 hover:underline">Edit</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                 </div>
+                 <div className="md:hidden space-y-4">
+                    {projects.map(p => (
+                        <Card key={p.id}>
+                            <div className="flex justify-between mb-2">
+                                <h3 className="font-bold">{p.name}</h3>
+                                <Badge color={p.status === 'active' ? 'green' : 'gray'}>{p.status}</Badge>
+                            </div>
+                            <div className="text-sm text-gray-500 mb-4">Language: {p.targetLanguageCode}</div>
+                            <Button fullWidth variant="secondary" onClick={() => { setEditingProject(p); setIsProjectModalOpen(true); }}>Edit Project</Button>
+                        </Card>
+                    ))}
+                 </div>
+              </div>
+          )}
+
           {tab === 'data' && (
               <div className="max-w-2xl">
                  <h2 className="text-2xl font-bold mb-6">Data Management</h2>
@@ -266,6 +353,28 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
           {tab === 'logs' && (
               <div>
                  <h2 className="text-2xl font-bold mb-6">Audit Logs</h2>
+                 <div className="hidden md:block bg-white border rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs uppercase text-gray-500">Time</th>
+                                <th className="px-6 py-3 text-left text-xs uppercase text-gray-500">User</th>
+                                <th className="px-6 py-3 text-left text-xs uppercase text-gray-500">Action</th>
+                                <th className="px-6 py-3 text-left text-xs uppercase text-gray-500">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {logs.slice(0, 50).map(log => (
+                                <tr key={log.id}>
+                                    <td className="px-6 py-4 text-sm text-gray-500">{new Date(log.timestamp).toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{log.userName}</td>
+                                    <td className="px-6 py-4 text-xs font-mono text-gray-600">{log.action}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-600">{log.details}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                 </div>
                  <div className="md:hidden space-y-3">
                      {logs.slice(0, 30).map(log => (
                          <div key={log.id} className="bg-white p-3 rounded border text-sm">
@@ -280,8 +389,63 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                  </div>
               </div>
           )}
+
+          {tab === 'settings' && (
+              <div className="max-w-xl space-y-6">
+                 <h2 className="text-2xl font-bold">System Settings</h2>
+                 <Card>
+                     <h3 className="text-lg font-medium mb-4">Artificial Intelligence</h3>
+                     <Input label="Google Gemini API Key" type="password" value={settings.geminiApiKey || ''} onChange={e => setSettings({...settings, geminiApiKey: e.target.value})} />
+                     <p className="text-xs text-gray-500 mt-2">Required for translation suggestions and quality scoring.</p>
+                 </Card>
+                 <Card>
+                     <h3 className="text-lg font-medium mb-4">General</h3>
+                     <label className="flex items-center space-x-2">
+                        <input type="checkbox" checked={settings.showDemoBanner} onChange={e => setSettings({...settings, showDemoBanner: e.target.checked})} />
+                        <span>Show "Demo Mode" Banner</span>
+                     </label>
+                 </Card>
+                 <div className="pt-4"><Button onClick={saveSettings} fullWidth>Save All Settings</Button></div>
+              </div>
+          )}
        </main>
        
+       {/* MODALS */}
+       {isGroupModalOpen && editingGroup && (
+           <Modal isOpen={isGroupModalOpen} onClose={() => setIsGroupModalOpen(false)} title={editingGroup.id ? "Edit Group" : "Create Group"}>
+               <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                   <Input label="Group Name" value={editingGroup.name} onChange={e => setEditingGroup({...editingGroup, name: e.target.value})} />
+                   <Input label="Description" value={editingGroup.description || ''} onChange={e => setEditingGroup({...editingGroup, description: e.target.value})} />
+                   <div>
+                       <label className="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-4 rounded border">
+                           {ALL_PERMISSIONS.map(perm => (
+                               <label key={perm} className="flex items-center space-x-2">
+                                   <input type="checkbox" checked={editingGroup.permissions.includes(perm)} onChange={() => toggleGroupPermission(perm)} disabled={editingGroup.id === 'g-admin' && perm === '*'} />
+                                   <span className="text-sm font-mono text-gray-600">{perm}</span>
+                               </label>
+                           ))}
+                       </div>
+                   </div>
+                   <div className="pt-4"><Button onClick={handleSaveGroup} fullWidth>Save Group</Button></div>
+               </div>
+           </Modal>
+       )}
+       {isProjectModalOpen && editingProject && (
+           <Modal isOpen={isProjectModalOpen} onClose={() => setIsProjectModalOpen(false)} title="Manage Project">
+               <div className="space-y-4">
+                   <Input label="Project Name" value={editingProject.name} onChange={e => setEditingProject({...editingProject, name: e.target.value})} />
+                   <Input label="Language Code" value={editingProject.targetLanguageCode} onChange={e => setEditingProject({...editingProject, targetLanguageCode: e.target.value})} />
+                   <div>
+                       <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                       <select className="block w-full border rounded p-2" value={editingProject.status} onChange={e => setEditingProject({...editingProject, status: e.target.value as any})}>
+                           <option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option><option value="draft">Draft</option>
+                       </select>
+                   </div>
+                   <Button onClick={handleSaveProject} fullWidth className="mt-4">Save Project</Button>
+               </div>
+           </Modal>
+       )}
        {isUserModalOpen && editingUser && (
            <Modal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} title={`Edit User`}>
                <div className="space-y-4">
@@ -290,6 +454,27 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                         value={editingUser.name} 
                         onChange={e => setEditingUser({...editingUser, name: e.target.value})} 
                    />
+                   <div>
+                       <label className="block text-sm font-medium text-gray-700 mb-2">Assigned Groups</label>
+                       <div className="space-y-2 border p-3 rounded">
+                           {groups.map(g => (
+                               <label key={g.id} className="flex items-center space-x-2">
+                                   <input 
+                                      type="checkbox" 
+                                      checked={editingUser.groupIds?.includes(g.id)} 
+                                      onChange={() => {
+                                          const current = editingUser.groupIds || [];
+                                          const newGroups = current.includes(g.id) 
+                                              ? current.filter(id => id !== g.id)
+                                              : [...current, g.id];
+                                          setEditingUser({ ...editingUser, groupIds: newGroups });
+                                      }}
+                                   />
+                                   <span>{g.name}</span>
+                               </label>
+                           ))}
+                       </div>
+                   </div>
                    <Button onClick={handleUpdateUser} fullWidth>Save Changes</Button>
                </div>
            </Modal>
@@ -299,7 +484,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
                <div className="space-y-4">
                    <p className="text-sm text-gray-600">Enter a new password for this user.</p>
                    <Input label="New Password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-                   <Button onClick={handlePasswordReset} className="w-full" disabled={!newPassword}>Confirm Reset</Button>
+                   <Button onClick={handlePasswordReset} fullWidth disabled={!newPassword}>Confirm Reset</Button>
                </div>
            </Modal>
        )}
