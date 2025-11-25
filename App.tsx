@@ -135,25 +135,32 @@ const App: React.FC = () => {
       });
   };
 
+  // --- DICTIONARY HANDLERS ---
+  
+  // UPDATED: Accepts Partial<Word> directly to match Dictionary.tsx
   const handleAddWord = async (input: Partial<Word>) => {
       if (!user || !input.text) return;
+      
+      // Construct the full Word object using input or defaults
       const newWord: Word = {
-        id: crypto.randomUUID(),
+        id: input.id || crypto.randomUUID(),
         language: targetLanguage.code,
         text: input.text,
-        normalizedText: input.text.toLowerCase().trim(),
+        normalizedText: input.normalizedText || input.text.toLowerCase().trim(),
         meanings: input.meanings || [],
         categories: (input.categories || []) as WordCategory[],
         notes: input.notes,
-        frequency: 0,
-        createdAt: Date.now(),
+        frequency: input.frequency || 0,
+        createdAt: input.createdAt || Date.now(),
         updatedAt: Date.now(),
         createdBy: user.id,
         updatedBy: user.id,
       };
+
       try {
           await StorageService.saveWord(newWord);
           setWords(prev => [...prev, newWord]);
+          toast.success("Word added successfully");
       } catch (error) {
           console.error(error);
           toast.error("Failed to add word.");
@@ -209,6 +216,7 @@ const App: React.FC = () => {
       }
   };
 
+  // --- REVIEW HANDLER ---
   const handleReviewAction = async (
       translationId: string, 
       status: 'approved' | 'rejected' | 'needs_attention', 
@@ -329,7 +337,7 @@ const App: React.FC = () => {
               id: wordId,
               text: wordText,
               normalizedText: normalizedText,
-              meanings: [translation], // Use translation as initial meaning
+              meanings: [translation], 
               categories: [],
               createdAt: Date.now(),
               updatedAt: Date.now(),
@@ -337,9 +345,7 @@ const App: React.FC = () => {
               updatedBy: user.id,
               frequency: 1
           };
-          // Update DB
           await StorageService.saveWord(newWord);
-          // Update Local State immediately so subsequent saves find it
           setWords(prev => [...prev, newWord]);
       }
 
