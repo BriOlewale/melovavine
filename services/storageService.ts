@@ -155,6 +155,7 @@ export const StorageService = {
   },
 
   // --- SPELLING & CORRECTIONS ---
+  
   createSpellingSuggestion: async (suggestion: SpellingSuggestion) => {
       await setDoc(doc(db, 'spelling_suggestions', suggestion.id), suggestion);
   },
@@ -184,6 +185,7 @@ export const StorageService = {
               
               const trans = transSnap.data() as Translation;
               
+              // Create version history entry
               const historyEntry: TranslationHistoryEntry = {
                   timestamp: Date.now(),
                   action: 'spell_correction',
@@ -398,7 +400,51 @@ export const StorageService = {
   },
 
   recomputeWordFrequencies: async () => {
-      // ... (keep existing impl) ...
+      try {
+          console.log("Starting frequency recomputation...");
+          const sentencesRef = collection(db, 'sentences');
+          const sSnap = await getDocs(sentencesRef); 
+          
+          const frequencyMap = new Map<string, number>();
+          
+          sSnap.docs.forEach(doc => {
+              const text = doc.data().english as string;
+              if (!text) return;
+              const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+              words.forEach(w => {
+                  if (w.length > 1) { 
+                      frequencyMap.set(w, (frequencyMap.get(w) || 0) + 1);
+                  }
+              });
+          });
+
+          const wordsRef = collection(db, 'words');
+          const wSnap = await getDocs(wordsRef);
+          
+          let batch = writeBatch(db);
+          let count = 0;
+
+          for (const wDoc of wSnap.docs) {
+              const word = wDoc.data() as Word;
+              const newFreq = frequencyMap.get(word.normalizedText || '') || 0;
+              
+              if (word.frequency !== newFreq) {
+                  batch.update(wDoc.ref, { frequency: newFreq, updatedAt: Date.now() });
+                  count++;
+                  
+                  if (count >= 450) {
+                      await batch.commit();
+                      batch = writeBatch(db);
+                      count = 0;
+                  }
+              }
+          }
+          
+          if (count > 0) await batch.commit();
+          console.log("Frequency recomputation complete.");
+      } catch (e) {
+          console.error("Frequency recomputation failed:", e);
+      }
   },
 
   // --- DATA & QUEUE LOGIC ---
@@ -526,45 +572,40 @@ export const StorageService = {
   saveTranslation: async (translation: Translation) => {
       await setDoc(doc(db, 'translations', translation.id), translation, { merge: true });
   },
-  
-  getSentenceCount: async (): Promise<number> => {
-      const coll = collection(db, 'sentences');
-      const snapshot = await getCountFromServer(coll);
-      return snapshot.data().count;
-  },
-  
-  saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
-    const CHUNK_SIZE = 450; 
-    for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
-        const chunk = sentences.slice(i, i + CHUNK_SIZE);
-        const batch = writeBatch(db);
-        chunk.forEach(s => {
-            if (s.id) {
-                const ref = doc(db, 'sentences', s.id.toString());
-                let diff: 1 | 2 | 3 = 2;
-                if (s.english.length < 20) diff = 1;
-                if (s.english.length > 100) diff = 3;
 
-                const enhancedSentence: Sentence = {
-                    ...s,
-                    priorityScore: StorageService.calculateInitialPriority(s.english),
-                    status: 'open',
-                    translationCount: 0,
-                    targetTranslations: TARGET_REDUNDANCY,
-                    lockedBy: null,
-                    lockedUntil: null,
-                    difficulty: diff, 
-                    length: s.english.length
-                };
-                batch.set(ref, enhancedSentence);
-            }
-        });
-        await batch.commit();
-        if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
-        await new Promise(r => setTimeout(r, 200));
-    }
+  // --- MISSING METHODS RESTORED ---
+  
+  getTranslations: async (): Promise<Translation[]> => {
+    const snap = await getDocs(collection(db, 'translations'));
+    return mapDocs<Translation>(snap);
   },
 
+  getProjects: async (): Promise<Project[]> => {
+      const snap = await getDocs(collection(db, 'projects'));
+      const projects = mapDocs<Project>(snap);
+      if (projects.length === 0) {
+          return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
+      }
+      return projects;
+  },
+
+  saveProject: async (project: Project) => {
+      await setDoc(doc(db, 'projects', project.id), project);
+  },
+
+  getAuditLogs: async (): Promise<AuditLog[]> => {
+      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
+      const snap = await getDocs(q);
+      return mapDocs<AuditLog>(snap);
+  },
+
+  logAuditAction: async (user: User, action: string, details: string, category: AuditLog['category'] = 'system') => {
+      await addDoc(collection(db, 'audit_logs'), {
+          action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category
+      });
+  },
+
+  // --- EXISTING METHODS ---
   getWordTranslations: async (): Promise<WordTranslation[]> => {
       const snap = await getDocs(collection(db, 'word_translations'));
       return mapDocs<WordTranslation>(snap);
@@ -614,15 +655,5 @@ export const StorageService = {
   },
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
-  clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); },
-  getAuditLogs: async (): Promise<AuditLog[]> => {
-      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
-      const snap = await getDocs(q);
-      return mapDocs<AuditLog>(snap);
-  },
-  logAuditAction: async (user: User, action: string, details: string, category: AuditLog['category'] = 'system') => {
-      await addDoc(collection(db, 'audit_logs'), {
-          action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category
-      });
-  }
+  clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); }
 };
