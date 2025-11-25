@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sentence, Translation, User, Language, SpellingSuggestion, TranslationReview } from '../types';
-import { Button, Card, Badge, toast, Skeleton, EmptyState, Modal, Input } from './UI';
+import { Button, Card, Badge, toast, Skeleton, EmptyState } from './UI'; // Removed 'Input' and 'Modal' as they are used in sub-components or unused
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
 import { TranslationHistoryModal } from './TranslationHistoryModal';
@@ -26,9 +26,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   
   const [isMinorFixOpen, setIsMinorFixOpen] = useState(false);
 
-  const [history, setHistory] = useState<TranslationReview[]>([]);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  
+  // History State logic moved to Modal component usage or simple toggle
   const [viewHistory, setViewHistory] = useState<Translation | null>(null);
 
   const current = pending[idx];
@@ -53,20 +51,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       } catch (error) {
           console.error(error);
           toast.error("Failed to load suggestions.");
-      }
-  };
-
-  const loadHistory = async () => {
-      if (!current) return;
-      setIsProcessing(true);
-      try {
-          const reviews = await StorageService.getTranslationReviews(current.id);
-          setHistory(reviews);
-          setIsHistoryOpen(true);
-      } catch (e) {
-          toast.error("Failed to load history.");
-      } finally {
-          setIsProcessing(false);
       }
   };
 
@@ -202,7 +186,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                         <div className="bg-slate-50 p-8 border-b border-slate-100">
                             <div className="flex justify-between mb-3">
                                 <div className="text-slate-400 text-xs font-extrabold uppercase tracking-widest">English Source</div>
-                                <button onClick={loadHistory} className="text-xs font-bold text-brand-600 hover:underline">View History</button>
+                                <button onClick={() => setViewHistory(current)} className="text-xs font-bold text-brand-600 hover:underline">View History</button>
                             </div>
                             <div className="text-2xl font-medium text-slate-800 leading-relaxed">
                                 {sentence ? sentence.english : <span className="italic text-slate-400">Loading source text for ID #{current.sentenceId}... (Data not in cache)</span>}
@@ -323,37 +307,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
               onSave={handleMinorFixSubmit}
            />
        )}
-
-       <Modal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} title="Translation History">
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                {history.length === 0 ? (
-                    <p className="text-center text-slate-400 italic py-4">No history available.</p>
-                ) : (
-                    history.map(h => (
-                        <div key={h.id} className="border-l-2 border-slate-200 pl-4 pb-4 relative">
-                            <div className="absolute -left-[5px] top-0 w-2.5 h-2.5 rounded-full bg-slate-300"></div>
-                            <div className="text-xs text-slate-400 mb-1">{new Date(h.createdAt).toLocaleString()}</div>
-                            <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                                {h.reviewerName}
-                                <Badge color={h.action === 'approved' ? 'green' : h.action === 'rejected' ? 'red' : 'blue'}>{h.action}</Badge>
-                            </div>
-                            {h.comment && (
-                                <div className="mt-2 text-sm bg-slate-50 p-2 rounded text-slate-600 italic">"{h.comment}"</div>
-                            )}
-                            {h.action === 'edited' && (
-                                <div className="mt-2 text-xs grid grid-cols-1 gap-1">
-                                    <div className="text-rose-500 line-through opacity-70">{h.previousText}</div>
-                                    <div className="text-emerald-600 font-bold">{h.newText}</div>
-                                </div>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
-            <div className="mt-6">
-                <Button variant="secondary" fullWidth onClick={() => setIsHistoryOpen(false)}>Close</Button>
-            </div>
-       </Modal>
     </div>
   );
 };
