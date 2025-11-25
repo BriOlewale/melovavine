@@ -67,7 +67,6 @@ const App: React.FC = () => {
           }
       };
 
-      // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
@@ -139,7 +138,6 @@ const App: React.FC = () => {
 
   // --- DICTIONARY HANDLERS ---
   
-  // Updated signature to match Dictionary.tsx expectation (Partial<Word>)
   const handleAddWord = async (input: Partial<Word>) => {
       if (!user || !input.text) return;
       const newWord: Word = {
@@ -154,7 +152,7 @@ const App: React.FC = () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         createdBy: user.id,
-        updatedBy: user.id,
+        updatedBy: user.id, // 'updatedBy' is now part of the Word type
       };
       try {
           await StorageService.saveWord(newWord);
@@ -165,19 +163,23 @@ const App: React.FC = () => {
       }
   };
 
-  const handleSuggestWordCorrection = async (correction: Partial<WordCorrection>) => {
-      if (!user || !correction.wordId || !correction.suggestionType) return;
-      const word = words.find(w => w.id === correction.wordId);
+  // UPDATED SIGNATURE
+  const handleSuggestWordCorrection = async (
+      wordId: string,
+      suggestion: { type: 'meaning' | 'spelling' | 'category' | 'note'; newValue: any; comment?: string }
+    ) => {
+      if (!user) return;
+      const word = words.find(w => w.id === wordId);
       if (!word) return;
 
-      const fullCorrection: WordCorrection = {
+      const correction: WordCorrection = {
         id: crypto.randomUUID(),
-        wordId: correction.wordId,
+        wordId: wordId,
         suggestedBy: user.id,
         suggestedByName: user.name,
-        suggestionType: correction.suggestionType,
+        suggestionType: suggestion.type,
         oldValue: (() => {
-          switch (correction.suggestionType) {
+          switch (suggestion.type) {
             case 'meaning': return word.meanings;
             case 'spelling': return word.text;
             case 'category': return word.categories;
@@ -185,13 +187,13 @@ const App: React.FC = () => {
             default: return null;
           }
         })(),
-        newValue: correction.newValue,
+        newValue: suggestion.newValue,
         createdAt: Date.now(),
         status: 'pending',
       };
 
       try {
-          await StorageService.submitWordCorrection(fullCorrection);
+          await StorageService.submitWordCorrection(correction);
           toast.success("Correction suggestion submitted!");
       } catch (error) {
           console.error(error);

@@ -129,6 +129,7 @@ export interface Word {
   createdAt?: number;
   updatedAt?: number;
   createdBy?: string;
+  updatedBy?: string; // Added to fix build error
   language?: string; // Optional for future multi-lang support
 }
 
