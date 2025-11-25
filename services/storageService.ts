@@ -155,7 +155,6 @@ export const StorageService = {
   },
 
   // --- SPELLING & CORRECTIONS ---
-  
   createSpellingSuggestion: async (suggestion: SpellingSuggestion) => {
       await setDoc(doc(db, 'spelling_suggestions', suggestion.id), suggestion);
   },
@@ -217,7 +216,7 @@ export const StorageService = {
       });
   },
 
-  // --- WORD CORRECTIONS (NEW) ---
+  // --- WORD CORRECTIONS ---
   submitWordCorrection: async (correction: WordCorrection) => {
       await setDoc(doc(db, 'word_corrections', correction.id), correction);
   },
@@ -242,7 +241,6 @@ export const StorageService = {
   },
 
   // --- COMMUNITY REPORTING ---
-
   createReport: async (report: Report) => {
       await setDoc(doc(db, 'reports', report.id), report);
   },
@@ -254,7 +252,6 @@ export const StorageService = {
   },
 
   // --- DICTIONARY ---
-
   getWords: async (): Promise<Word[]> => {
       const snap = await getDocs(collection(db, 'words'));
       return mapDocs<Word>(snap);
@@ -342,6 +339,21 @@ export const StorageService = {
 
   // --- DATA & QUEUE LOGIC ---
   
+  getSentences: async (): Promise<Sentence[]> => {
+    const q = query(collection(db, 'sentences'), limit(2000)); 
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Sentence); 
+  },
+
+  calculateInitialPriority: (sentence: string): number => {
+      let score = 100;
+      const len = sentence.length;
+      // Simple difficulty logic
+      if (len < 20) score += 20; 
+      if (len > 100) score -= 10; 
+      return score;
+  },
+
   getSmartQueueTask: async (user: User, excludedIds: number[] = []): Promise<Sentence | null> => {
       try {
           const sentencesRef = collection(db, 'sentences');
@@ -559,5 +571,15 @@ export const StorageService = {
   },
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
-  clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); }
+  clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); },
+  getAuditLogs: async (): Promise<AuditLog[]> => {
+      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
+      const snap = await getDocs(q);
+      return mapDocs<AuditLog>(snap);
+  },
+  logAuditAction: async (user: User, action: string, details: string, category: AuditLog['category'] = 'system') => {
+      await addDoc(collection(db, 'audit_logs'), {
+          action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category
+      });
+  }
 };
