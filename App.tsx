@@ -10,7 +10,7 @@ import { CommunityHub } from './components/CommunityHub';
 import { Corpus } from './components/Corpus';
 import { Auth } from './components/Auth';
 import { StorageService } from './services/storageService';
-import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report } from './types';
+import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report, WordCorrection } from './types';
 import { auth } from './services/firebaseConfig';
 // @ts-ignore
 import { onAuthStateChanged } from 'firebase/auth';
@@ -67,13 +67,25 @@ const App: React.FC = () => {
           }
       };
 
+      // Check for verification token in URL
+      const params = new URLSearchParams(window.location.search);
+      const verifyToken = params.get('verify');
+      if (verifyToken) {
+          StorageService.verifyEmail(verifyToken).then(res => {
+              if (res.success) {
+                  alert("✅ " + res.message); 
+                  window.history.replaceState({}, document.title, window.location.pathname);
+              } else {
+                  alert("❌ " + res.message); 
+              }
+          });
+      }
+
       // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
-              // Reload to check verification status
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
 
-              // SECURITY CHECK: Block unverified users (except Admin)
               if (firebaseUser.email !== 'brime.olewale@gmail.com' && !firebaseUser.emailVerified) {
                   console.warn("Blocked unverified user from auto-login.");
                   await StorageService.logout();
@@ -89,11 +101,7 @@ const App: React.FC = () => {
                   let userData = snap.data() as User;
                   
                   if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
-                      userData = {
-                          ...userData,
-                          role: 'admin',
-                          groupIds: ['g-admin']
-                      };
+                      userData = { ...userData, role: 'admin', groupIds: ['g-admin'] };
                       await setDoc(docRef, userData, { merge: true });
                   }
 
@@ -121,7 +129,6 @@ const App: React.FC = () => {
   const handleImportSentences = async () => { window.location.reload(); };
   
   const handleSaveTranslation = async (translation: Translation) => {
-    // Optimistic Update
     setTranslations(prev => {
        const idx = prev.findIndex(t => t.id === translation.id);
        if (idx >= 0) { const copy = [...prev]; copy[idx] = translation; return copy; }
@@ -144,18 +151,83 @@ const App: React.FC = () => {
       setWordTranslations(prev => [...prev, newWT]);
   };
 
+  // --- DICTIONARY HANDLERS ---
+  
+  const handleAddWord = async (input: { text: string; meanings: string[]; categories: string[]; notes?: string }) => {
+      if (!user) return;
+      const newWord: Word = {
+        id: crypto.randomUUID(),
+        language: targetLanguage.code,
+        text: input.text,
+        normalizedText: input.text.toLowerCase().trim(),
+        meanings: input.meanings,
+        categories: input.categories,
+        notes: input.notes,
+        frequency: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        createdBy: user.id,
+        updatedBy: user.id,
+      };
+      try {
+          await StorageService.saveWord(newWord);
+          setWords(prev => [...prev, newWord]);
+      } catch (error) {
+          console.error(error);
+          toast.error("Failed to add word.");
+      }
+  };
+
+  const handleSuggestWordCorrection = async (
+      wordId: string,
+      suggestion: { type: 'meaning' | 'spelling' | 'category' | 'note'; newValue: any; comment?: string }
+    ) => {
+      if (!user) return;
+      const word = words.find(w => w.id === wordId);
+      if (!word) return;
+
+      const correction: WordCorrection = {
+        id: crypto.randomUUID(),
+        wordId,
+        suggestedBy: user.id,
+        suggestedByName: user.name,
+        suggestionType: suggestion.type,
+        oldValue: (() => {
+          switch (suggestion.type) {
+            case 'meaning': return word.meanings;
+            case 'spelling': return word.text;
+            case 'category': return word.categories;
+            case 'note': return word.notes || '';
+            default: return null;
+          }
+        })(),
+        newValue: suggestion.newValue,
+        createdAt: Date.now(),
+        status: 'pending',
+      };
+
+      try {
+          await StorageService.submitWordCorrection(correction);
+          toast.success("Correction suggestion submitted!");
+      } catch (error) {
+          console.error(error);
+          toast.error("Failed to submit suggestion.");
+      }
+  };
+
   const handleDeleteWord = async (wordId: string) => {
       if (!user) return;
       try {
           await StorageService.deleteWord(wordId);
           setWords(prev => prev.filter(w => w.id !== wordId));
+          toast.success("Word deleted.");
       } catch (e: any) {
           console.error("Delete word failed", e);
-          alert("Failed to delete word: " + e.message);
+          toast.error("Failed to delete word.");
       }
   };
 
-  // --- CENTRALIZED REVIEW HANDLER ---
+  // --- REVIEW HANDLER ---
   const handleReviewAction = async (
       translationId: string, 
       status: 'approved' | 'rejected' | 'needs_attention', 
@@ -191,7 +263,6 @@ const App: React.FC = () => {
               history: [...(translation.history || []), historyEntry] 
           };
 
-          // Update State & Database
           await handleSaveTranslation(updated);
           
       } catch (error) {
@@ -225,7 +296,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- REPORTING ---
   const handleFlag = (type: 'sentence' | 'translation', id: string | number) => {
       setReportTarget({ type, id });
       setIsReportModalOpen(true);
@@ -284,7 +354,7 @@ const App: React.FC = () => {
             {currentPage === 'dashboard' && <Dashboard sentences={sentences} totalCount={totalSentenceCount} translations={translations} language={targetLanguage} users={allUsers} onNavigate={handleNavigate} />}
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
             {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslation} onAddComment={handleAddComment} onFlag={handleFlag} />}
-            {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} user={user} onDeleteWord={handleDeleteWord} />}
+            {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} translations={translations} user={user} onDeleteWord={handleDeleteWord} onAddWord={handleAddWord} onSuggestCorrection={handleSuggestWordCorrection} />}
             {currentPage === 'corpus' && <Corpus sentences={sentences} translations={translations} users={allUsers} targetLanguage={targetLanguage} user={user} onVote={handleVote} onAddComment={handleAddComment} onFlag={handleFlag} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
             {currentPage === 'review' && (canAccessReview ? <Reviewer sentences={sentences} translations={translations} user={user} targetLanguage={targetLanguage} onReviewAction={handleReviewAction} onUpdateTranslation={handleSaveTranslation} /> : <div className="p-8 text-center"><h3 className="text-xl font-bold text-slate-800">Access Denied</h3><p className="text-slate-500">You do not have permission to access this area.</p></div>)}
