@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Word, WordTranslation, User, WordCategory, WordCorrection, Translation } from '../types';
-import { Card, Input, Button, Modal, Badge, toast } from './UI';
+import { Card, Input, Button, Modal, Badge } from './UI'; // Removed unused 'toast'
 import { StorageService } from '../services/storageService';
 import WordDetail from './WordDetail';
 
@@ -20,7 +20,6 @@ interface DictionaryProps {
   onSuggestCorrection: (wordId: string, suggestion: { type: 'meaning' | 'spelling' | 'category' | 'note'; newValue: any; comment?: string }) => void;
 }
 
-// Removed 'wordTranslations' from destructuring as it is currently unused in this view logic
 export const Dictionary: React.FC<DictionaryProps> = ({ 
   words, translations, user, onDeleteWord, onAddWord, onSuggestCorrection 
 }) => {
@@ -69,7 +68,8 @@ export const Dictionary: React.FC<DictionaryProps> = ({
       setIsAddModalOpen(false);
       setNewWord({ text: '', meanings: [], categories: [] });
       setNewWordMeanings('');
-      toast.success("Word added successfully!");
+      // toast.success is handled by parent prop onAddWord if async, 
+      // but since prop is void, we rely on App.tsx to show toast.
   };
 
   const handleCorrectionSubmit = () => {
@@ -82,7 +82,6 @@ export const Dictionary: React.FC<DictionaryProps> = ({
       });
       setIsCorrectionModalOpen(false);
       setCorrectionValue('');
-      toast.success("Correction suggestion submitted!");
   };
 
   const handleCorrectionFromDetail = (correction: { wordId: string, type: any, newValue: any, comment?: string }) => {
@@ -92,7 +91,6 @@ export const Dictionary: React.FC<DictionaryProps> = ({
           newValue: correction.newValue,
           comment: correction.comment
       });
-      toast.success("Correction suggestion submitted!");
   };
 
   const handleDelete = (word: Word) => {
