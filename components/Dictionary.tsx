@@ -219,14 +219,14 @@ export const Dictionary: React.FC<DictionaryProps> = ({
        <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add New Word">
            <div className="space-y-4">
                <Input 
-                   label="Word Text" 
+                   label="English Word" 
                    value={newWord.text} 
                    onChange={e => setNewWord({...newWord, text: e.target.value})} 
                    placeholder="e.g. Hello"
                />
                
                <div>
-                   <label className="block text-sm font-bold text-slate-700 mb-2">Meanings (comma separated)</label>
+                   <label className="block text-sm font-bold text-slate-700 mb-2">Hula Translation</label>
                    <textarea 
                        className="w-full border-2 border-slate-100 rounded-xl p-3 focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10 outline-none"
                        rows={3}
