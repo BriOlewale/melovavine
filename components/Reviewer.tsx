@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Sentence, Translation, User, Language, SpellingSuggestion } from '../types';
-import { Button, Card, Badge, toast, Skeleton, EmptyState } from './UI';
+import { Sentence, Translation, User, Language, SpellingSuggestion, TranslationReview } from '../types';
+import { Button, Card, Badge, toast, Skeleton, EmptyState, Modal, Input } from './UI';
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
-import { TranslationHistoryModal } from './TranslationHistoryModal';
 
 interface ReviewerProps {
   sentences: Sentence[];
@@ -21,12 +20,18 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   // Translation Review State
   // Filter for pending OR needs_attention (so reviewers can re-review fixes)
   const pending = translations.filter(t => t.languageCode === targetLanguage.code && (t.status === 'pending' || t.status === 'needs_attention'));
-  const [idx] = useState(0);
+  const [idx, setIdx] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedback, setFeedback] = useState('');
   
-  // History Modal
-  const [viewHistory, setViewHistory] = useState<Translation | null>(null);
+  // Minor Fix State
+  const [isMinorFixOpen, setIsMinorFixOpen] = useState(false);
+  const [editedText, setEditedText] = useState('');
+  const [fixComment, setFixComment] = useState('Minor fix');
+
+  // History State
+  const [history, setHistory] = useState<TranslationReview[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   
   const current = pending[idx];
   // Safely find sentence, or fallback if missing from local cache
@@ -41,6 +46,14 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       }
   }, [tab]);
 
+  // Reset local state when current item changes
+  useEffect(() => {
+      setFeedback('');
+      if (current) {
+          setEditedText(current.text);
+      }
+  }, [current]);
+
   const loadSuggestions = async () => {
       try {
           const list = await StorageService.getOpenSpellingSuggestions();
@@ -51,26 +64,97 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       }
   };
 
+  const loadHistory = async () => {
+      if (!current) return;
+      setIsProcessing(true);
+      try {
+          const reviews = await StorageService.getTranslationReviews(current.id);
+          setHistory(reviews);
+          setIsHistoryOpen(true);
+      } catch (e) {
+          toast.error("Failed to load history.");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
   const handleAction = async (status: 'approved' | 'rejected' | 'needs_attention') => {
       if (!current) return;
 
       if ((status === 'rejected' || status === 'needs_attention') && !feedback.trim()) {
-          toast.error("Please provide feedback for rejection or attention requests.");
+          toast.error("Please explain why you are rejecting this translation.");
           return;
       }
 
       setIsProcessing(true);
       try {
+          // Create review object
+          const review: TranslationReview = {
+              id: crypto.randomUUID(),
+              translationId: current.id,
+              reviewerId: user.id,
+              reviewerName: user.name,
+              action: status === 'approved' ? 'approved' : 'rejected', // needs_attention maps to rejected in review object logic usually, or custom status
+              comment: feedback || undefined,
+              createdAt: Date.now()
+          };
+
+          // Use the new StorageService method which handles status updates and history
+          await StorageService.addTranslationReview(review);
+          
+          // Also update local UI via prop if needed (though StorageService update should propagate via listener eventually)
+          // We call the prop callback to keep the parent App state in sync optimistically if needed, 
+          // but StorageService.addTranslationReview handles the DB write.
+          // To be safe and keep UI responsive, we can still call onReviewAction which might update local state.
           await onReviewAction(current.id, status, feedback);
+
           toast.success(status === 'approved' ? "Translation approved! 🎉" : "Feedback submitted.");
-          setFeedback(''); // Clear feedback on success
+          setFeedback(''); 
+          // Move to next item (simple logic: if we approved/rejected, it leaves 'pending' state, so filtering removes it)
+          // But since 'pending' array is derived from props, we wait for parent update or just increment idx?
+          // Better: filtering happens automatically if parent state updates. 
+          // If parent state doesn't update immediately, we might see stale data. 
+          // For now, rely on parent update.
       } catch (e: any) {
           console.error("Review Error", e);
-          if (e.code === 'resource-exhausted') {
-              toast.error("Quota Exceeded. Try again tomorrow.");
-          } else {
-              toast.error("Action failed.");
-          }
+          toast.error("Action failed.");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handleMinorFixSubmit = async () => {
+      if (!current) return;
+      if (!editedText.trim()) {
+          toast.error("Translation cannot be empty.");
+          return;
+      }
+
+      setIsProcessing(true);
+      try {
+          await StorageService.applyMinorFix(current.id, editedText, user);
+          
+          // Also log this as a review action 'edited'
+          const review: TranslationReview = {
+             id: crypto.randomUUID(),
+             translationId: current.id,
+             reviewerId: user.id,
+             reviewerName: user.name,
+             action: 'edited',
+             previousText: current.text,
+             newText: editedText,
+             comment: fixComment || "Minor fix applied",
+             createdAt: Date.now()
+          };
+          await StorageService.addTranslationReview(review);
+
+          toast.success("Minor fix applied and approved!");
+          setIsMinorFixOpen(false);
+          // Trigger parent update if necessary, or rely on DB listener
+          // onReviewAction(current.id, 'approved', 'Minor Fix Applied'); // Optional
+      } catch (e) {
+          console.error(e);
+          toast.error("Failed to apply fix.");
       } finally {
           setIsProcessing(false);
       }
@@ -143,7 +227,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                         <div className="bg-slate-50 p-8 border-b border-slate-100">
                             <div className="flex justify-between mb-3">
                                 <div className="text-slate-400 text-xs font-extrabold uppercase tracking-widest">English Source</div>
-                                <button onClick={() => setViewHistory(current)} className="text-xs font-bold text-brand-600 hover:underline">View History</button>
+                                <button onClick={loadHistory} className="text-xs font-bold text-brand-600 hover:underline">View History</button>
                             </div>
                             <div className="text-2xl font-medium text-slate-800 leading-relaxed">
                                 {sentence ? sentence.english : <span className="italic text-slate-400">Loading source text for ID #{current.sentenceId}... (Data not in cache)</span>}
@@ -176,28 +260,33 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
 
                             {/* Feedback Input */}
                             <div className="mb-4">
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Reviewer Feedback (Required for Rejection)</label>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    Reviewer Feedback <span className="text-rose-500">*</span>
+                                </label>
                                 <textarea 
                                     className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                                     rows={2}
-                                    placeholder="Add comments or corrections here..."
+                                    placeholder="Explain why you are rejecting or editing..."
                                     value={feedback}
                                     onChange={e => setFeedback(e.target.value)}
                                 />
                             </div>
 
                             {/* Action Bar */}
-                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                <Button variant="secondary" onClick={handleAI} disabled={isProcessing || !sentence} className="sm:col-span-1">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                <Button variant="secondary" onClick={handleAI} disabled={isProcessing || !sentence} className="col-span-1">
                                     AI Check
                                 </Button>
-                                <Button variant="secondary" onClick={() => handleAction('needs_attention')} disabled={isProcessing || !canApprove} className="sm:col-span-1 text-amber-600 border-amber-200 hover:bg-amber-50">
+                                <Button variant="secondary" onClick={() => handleAction('needs_attention')} disabled={isProcessing || !canApprove || !feedback.trim()} className="col-span-1 text-amber-600 border-amber-200 hover:bg-amber-50">
                                     Flag
                                 </Button>
-                                <Button variant="danger" onClick={() => handleAction('rejected')} disabled={isProcessing || !canApprove} className="sm:col-span-1">
+                                <Button variant="secondary" onClick={() => setIsMinorFixOpen(true)} disabled={isProcessing || !canApprove} className="col-span-1 text-blue-600 border-blue-200 hover:bg-blue-50">
+                                    Minor Fix
+                                </Button>
+                                <Button variant="danger" onClick={() => handleAction('rejected')} disabled={isProcessing || !canApprove || !feedback.trim()} className="col-span-1">
                                     Reject
                                 </Button>
-                                <Button variant="primary" onClick={() => handleAction('approved')} disabled={isProcessing || !canApprove} className="sm:col-span-1 bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
+                                <Button variant="primary" onClick={() => handleAction('approved')} disabled={isProcessing || !canApprove} className="col-span-1 bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
                                     Approve
                                 </Button>
                             </div>
@@ -250,12 +339,71 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
            </div>
        )}
 
-       {/* History Modal */}
-       <TranslationHistoryModal 
-          isOpen={!!viewHistory} 
-          onClose={() => setViewHistory(null)} 
-          translation={viewHistory} 
-       />
+       {/* Minor Fix Modal */}
+       <Modal isOpen={isMinorFixOpen} onClose={() => setIsMinorFixOpen(false)} title="Apply Minor Fix">
+           <div className="space-y-4">
+               <p className="text-sm text-slate-500">Edit the translation directly. This will approve the translation with your changes.</p>
+               
+               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                   <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Original</div>
+                   <div className="text-slate-800">{current?.text}</div>
+               </div>
+
+               <div>
+                   <label className="block text-sm font-bold text-slate-700 mb-2">Corrected Text</label>
+                   <textarea 
+                       className="w-full border-2 border-slate-100 rounded-xl p-3 focus:ring-4 focus:ring-brand-500/10 focus:border-brand-400 outline-none transition-all"
+                       rows={3}
+                       value={editedText}
+                       onChange={e => setEditedText(e.target.value)}
+                   />
+               </div>
+
+               <Input 
+                   label="Reason (Optional)" 
+                   value={fixComment} 
+                   onChange={e => setFixComment(e.target.value)} 
+                   placeholder="e.g. Fixed spelling, corrected grammar..."
+               />
+
+               <div className="flex gap-3 mt-4">
+                   <Button variant="secondary" fullWidth onClick={() => setIsMinorFixOpen(false)}>Cancel</Button>
+                   <Button fullWidth onClick={handleMinorFixSubmit} disabled={isProcessing || !editedText.trim()}>Apply Fix & Approve</Button>
+               </div>
+           </div>
+       </Modal>
+
+       {/* History Modal / Drawer */}
+       <Modal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} title="Translation History">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                {history.length === 0 ? (
+                    <p className="text-center text-slate-400 italic py-4">No history available.</p>
+                ) : (
+                    history.map(h => (
+                        <div key={h.id} className="border-l-2 border-slate-200 pl-4 pb-4 relative">
+                            <div className="absolute -left-[5px] top-0 w-2.5 h-2.5 rounded-full bg-slate-300"></div>
+                            <div className="text-xs text-slate-400 mb-1">{new Date(h.createdAt).toLocaleString()}</div>
+                            <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                                {h.reviewerName}
+                                <Badge color={h.action === 'approved' ? 'green' : h.action === 'rejected' ? 'red' : 'blue'}>{h.action}</Badge>
+                            </div>
+                            {h.comment && (
+                                <div className="mt-2 text-sm bg-slate-50 p-2 rounded text-slate-600 italic">"{h.comment}"</div>
+                            )}
+                            {h.action === 'edited' && (
+                                <div className="mt-2 text-xs grid grid-cols-1 gap-1">
+                                    <div className="text-rose-500 line-through opacity-70">{h.previousText}</div>
+                                    <div className="text-emerald-600 font-bold">{h.newText}</div>
+                                </div>
+                            )}
+                        </div>
+                    ))
+                )}
+            </div>
+            <div className="mt-6">
+                <Button variant="secondary" fullWidth onClick={() => setIsHistoryOpen(false)}>Close</Button>
+            </div>
+       </Modal>
     </div>
   );
 };
