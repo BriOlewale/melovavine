@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Sentence, Translation, User, Language, SpellingSuggestion, TranslationReview } from '../types';
-import { Button, Card, Badge, toast, Skeleton, EmptyState } from './UI'; // Removed 'Input' and 'Modal' as they are used in sub-components or unused
+import { Button, Card, Badge, toast, Skeleton, EmptyState, Modal, Input } from './UI';
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
 import { TranslationHistoryModal } from './TranslationHistoryModal';
 import MinorFixModal from './MinorFixModal';
+import ReviewHistoryDrawer from './ReviewHistoryDrawer';
 
 interface ReviewerProps {
   sentences: Sentence[];
@@ -25,9 +26,10 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   const [feedback, setFeedback] = useState('');
   
   const [isMinorFixOpen, setIsMinorFixOpen] = useState(false);
-
-  // History State logic moved to Modal component usage or simple toggle
-  const [viewHistory, setViewHistory] = useState<Translation | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<TranslationReview[]>([]);
+  
+  const [viewHistory, setViewHistory] = useState<Translation | null>(null); // Kept for legacy full history if needed, but drawer handles reviews now
 
   const current = pending[idx];
   const sentence = current ? sentences.find(s => s.id === current.sentenceId) : null;
@@ -51,6 +53,20 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       } catch (error) {
           console.error(error);
           toast.error("Failed to load suggestions.");
+      }
+  };
+
+  const loadHistory = async () => {
+      if (!current) return;
+      setIsProcessing(true);
+      try {
+          const reviews = await StorageService.getTranslationReviews(current.id);
+          setHistory(reviews);
+          setIsHistoryOpen(true);
+      } catch (e) {
+          toast.error("Failed to load history.");
+      } finally {
+          setIsProcessing(false);
       }
   };
 
@@ -186,7 +202,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                         <div className="bg-slate-50 p-8 border-b border-slate-100">
                             <div className="flex justify-between mb-3">
                                 <div className="text-slate-400 text-xs font-extrabold uppercase tracking-widest">English Source</div>
-                                <button onClick={() => setViewHistory(current)} className="text-xs font-bold text-brand-600 hover:underline">View History</button>
+                                <button onClick={loadHistory} className="text-xs font-bold text-brand-600 hover:underline">View History</button>
                             </div>
                             <div className="text-2xl font-medium text-slate-800 leading-relaxed">
                                 {sentence ? sentence.english : <span className="italic text-slate-400">Loading source text for ID #{current.sentenceId}... (Data not in cache)</span>}
@@ -293,6 +309,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
            </div>
        )}
 
+       {/* Legacy History Modal for non-review usage if needed */}
        <TranslationHistoryModal 
           isOpen={!!viewHistory} 
           onClose={() => setViewHistory(null)} 
@@ -307,6 +324,12 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
               onSave={handleMinorFixSubmit}
            />
        )}
+
+       <ReviewHistoryDrawer 
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          reviews={history}
+       />
     </div>
   );
 };
