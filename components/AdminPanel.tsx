@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserGroup, Project, AuditLog, Permission, Sentence } from '../types'; 
+import { User, UserGroup, Project, AuditLog, Permission } from '../types'; 
 import { Button, Card, Input, Modal, Badge } from './UI';
 import { StorageService, ALL_PERMISSIONS } from '../services/storageService'; 
 
@@ -54,75 +54,44 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
   // --- Handlers ---
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+              try {
+                  const json = JSON.parse(ev.target?.result as string);
+                  const formatted = json.map((x: any) => ({ 
+                      id: x.id, 
+                      english: x.english || x.sentence,
+                      projectId: projects.length > 0 ? projects[0].id : 'default' 
+                  })).filter((x: any) => x.id && x.english);
+                  
+                  if (formatted.length === 0) {
+                      alert("No valid sentences found in JSON. Ensure 'id' and 'english' fields exist.");
+                      return;
+                  }
 
-  const reader = new FileReader();
+                  setImportStatus(`Preparing to import ${formatted.length} sentences...`);
+                  
+                  await StorageService.saveSentences(formatted, (count) => {
+                      setImportStatus(`Imported ${count} / ${formatted.length} sentences...`);
+                  });
 
-  setImportStatus('');
-  setIsLoading(true);
-
-  reader.onload = async (ev) => {
-    try {
-      const raw = ev.target?.result;
-      if (typeof raw !== 'string') {
-        throw new Error('Could not read file as text.');
+                  await onImportSentences();
+                  
+                  if (currentUser) StorageService.logAuditAction(currentUser, 'IMPORT_DATA', `Imported ${formatted.length} sentences`);
+                  setImportStatus(`Success! Imported ${formatted.length} sentences.`);
+                  alert('Import Complete! The page will now reload.');
+                  setImportStatus('');
+              } catch (err: any) {
+                  console.error(err);
+                  setImportStatus('Error: ' + err.message);
+                  alert('Import failed. Check the status message.');
+              }
+          };
+          reader.readAsText(file);
       }
-
-      const json = JSON.parse(raw);
-      if (!Array.isArray(json)) {
-        throw new Error('JSON must be an array of sentence objects.');
-      }
-
-      // Normalise incoming data → Sentence[]
-      const formatted = json
-        .map((x: any, idx: number) => ({
-          id: x.id ?? idx + 1,
-          english: x.english || x.sentence,
-          projectId: projects.length > 0 ? projects[0].id : 'default-project',
-        }))
-        .filter((x: any) => x.id && x.english) as Sentence[];
-
-      if (formatted.length === 0) {
-        const msg =
-          "No valid sentences found in JSON. Each item must have 'id' and 'english' (or 'sentence').";
-        setImportStatus(msg);
-        alert(msg);
-        return;
-      }
-
-      setImportStatus(`Preparing to import ${formatted.length} sentences...`);
-
-      // Bulk import with progress callback
-      await StorageService.saveSentences(
-        formatted,
-        (count: number) => {
-          setImportStatus(`Imported ${count} / ${formatted.length} sentences...`);
-        }
-      );
-
-      // Let parent refresh its local state if it wants to
-      if (typeof onImportSentences === 'function') {
-        await Promise.resolve(onImportSentences(formatted.length));
-      }
-
-      setImportStatus(`Success! Imported ${formatted.length} sentences.`);
-      alert('Import complete!');
-
-    } catch (err: any) {
-      console.error('Import failed:', err);
-      setImportStatus('Error: ' + (err?.message || 'Unknown error while importing.'));
-      alert('Import failed. Check the status message for details.');
-    } finally {
-      setIsLoading(false);
-      // Reset file input so user can re-upload the same file if needed
-      e.target.value = '';
-    }
   };
-
-  reader.readAsText(file);
-};
-
 
   const saveSettings = async () => { 
       await StorageService.saveSystemSettings(settings); 

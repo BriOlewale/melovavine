@@ -245,20 +245,19 @@ export const StorageService = {
 
   addTranslationReview: async (review: TranslationReview): Promise<void> => {
     try {
-        const safeReview = {
-            ...review,
-            comment: review.comment ?? '' // FIX: Safely handle undefined comment
-        };
+        // 1. Save the review record
+        await setDoc(doc(db, 'translationReviews', review.id), review);
 
-        await setDoc(doc(db, 'translationReviews', safeReview.id), safeReview);
-
+        // 2. Determine new status for the translation
         let newStatus: Translation['status'] | undefined;
-        if (safeReview.action === 'approved') newStatus = 'approved';
-        else if (safeReview.action === 'rejected') newStatus = 'rejected';
-        else if (safeReview.action === 'edited') newStatus = 'approved';
+        if (review.action === 'approved') newStatus = 'approved';
+        else if (review.action === 'rejected') newStatus = 'rejected';
+        else if (review.action === 'edited') newStatus = 'approved'; // Minor fix usually implies approval
 
-        const transRef = doc(db, 'translations', safeReview.translationId);
+        // 3. Update the Translation document
+        const transRef = doc(db, 'translations', review.translationId);
         
+        // We need to atomically increment reviewCount and update status
         await runTransaction(db, async (transaction) => {
             const transDoc = await transaction.get(transRef);
             if (!transDoc.exists()) throw "Translation not found";
@@ -268,29 +267,32 @@ export const StorageService = {
 
             const updates: any = {
                 reviewCount: currentCount + 1,
-                lastReviewedAt: safeReview.createdAt,
-                lastReviewerId: safeReview.reviewerId,
-                reviewedBy: safeReview.reviewerId,
-                reviewedAt: safeReview.createdAt
+                lastReviewedAt: review.createdAt,
+                lastReviewerId: review.reviewerId,
+                // Also update legacy fields for backward compatibility if needed
+                reviewedBy: review.reviewerId,
+                reviewedAt: review.createdAt
             };
 
             if (newStatus) {
                 updates.status = newStatus;
             }
             
-            if (safeReview.action === 'edited' && safeReview.newText) {
-                updates.text = safeReview.newText;
+            if (review.action === 'edited' && review.newText) {
+                updates.text = review.newText;
             }
 
+            // Optional: Append to legacy history array if we want to keep it synced
+            // This is redundant if we query 'translationReviews' collection, but good for simple history modal
             const historyEntry: TranslationHistoryEntry = {
-                timestamp: safeReview.createdAt,
-                action: safeReview.action === 'edited' ? 'edited' : safeReview.action === 'approved' ? 'approved' : 'rejected',
-                userId: safeReview.reviewerId,
-                userName: safeReview.reviewerName,
+                timestamp: review.createdAt,
+                action: review.action === 'edited' ? 'edited' : review.action === 'approved' ? 'approved' : 'rejected',
+                userId: review.reviewerId,
+                userName: review.reviewerName,
                 details: {
-                    oldText: safeReview.previousText,
-                    newText: safeReview.newText,
-                    reason: safeReview.comment
+                    oldText: review.previousText,
+                    newText: review.newText,
+                    reason: review.comment
                 }
             };
             updates.history = [...(data.history || []), historyEntry];
@@ -448,56 +450,6 @@ export const StorageService = {
   },
 
   // --- DATA & QUEUE LOGIC ---
-
-    // Count how many sentences exist in Firestore
-  getSentenceCount: async (): Promise<number> => {
-      const coll = collection(db, 'sentences');
-      const snapshot = await getCountFromServer(coll);
-      return snapshot.data().count;
-  },
-
-  // Bulk import / save sentences with batching and initial metadata
-  saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
-      const CHUNK_SIZE = 450;
-
-      for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
-          const chunk = sentences.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(db);
-
-          chunk.forEach(s => {
-              if (s.id) {
-                  const ref = doc(db, 'sentences', s.id.toString());
-
-                  let diff: 1 | 2 | 3 = 2;
-                  if (s.english.length < 20) diff = 1;
-                  if (s.english.length > 100) diff = 3;
-
-                  const enhancedSentence: Sentence = {
-                      ...s,
-                      priorityScore: StorageService.calculateInitialPriority(s.english),
-                      status: 'open',
-                      translationCount: 0,
-                      targetTranslations: TARGET_REDUNDANCY,
-                      lockedBy: null,
-                      lockedUntil: null,
-                      difficulty: diff,
-                      length: s.english.length
-                  };
-
-                  batch.set(ref, enhancedSentence);
-              }
-          });
-
-          await batch.commit();
-
-          if (onProgress) {
-              onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
-          }
-
-          // Small pause to avoid hammering Firestore
-          await new Promise(resolve => setTimeout(resolve, 200));
-      }
-  },
   
   getSentences: async (): Promise<Sentence[]> => {
     const q = query(collection(db, 'sentences'), limit(2000)); 
@@ -622,14 +574,52 @@ export const StorageService = {
   saveTranslation: async (translation: Translation) => {
       await setDoc(doc(db, 'translations', translation.id), translation, { merge: true });
   },
-
-  // --- MISSING METHODS RESTORED ---
   
+  getSentenceCount: async (): Promise<number> => {
+      const coll = collection(db, 'sentences');
+      const snapshot = await getCountFromServer(coll);
+      return snapshot.data().count;
+  },
+  
+  saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
+    const CHUNK_SIZE = 450; 
+    for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
+        const chunk = sentences.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(s => {
+            if (s.id) {
+                const ref = doc(db, 'sentences', s.id.toString());
+                let diff: 1 | 2 | 3 = 2;
+                if (s.english.length < 20) diff = 1;
+                if (s.english.length > 100) diff = 3;
+
+                const enhancedSentence: Sentence = {
+                    ...s,
+                    priorityScore: StorageService.calculateInitialPriority(s.english),
+                    status: 'open',
+                    translationCount: 0,
+                    targetTranslations: TARGET_REDUNDANCY,
+                    lockedBy: null,
+                    lockedUntil: null,
+                    difficulty: diff, 
+                    length: s.english.length
+                };
+                batch.set(ref, enhancedSentence);
+            }
+        });
+        await batch.commit();
+        if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
+        await new Promise(r => setTimeout(r, 200));
+    }
+  },
+
   getTranslations: async (): Promise<Translation[]> => {
     const snap = await getDocs(collection(db, 'translations'));
     return mapDocs<Translation>(snap);
   },
-
+  deleteTranslation: async (id: string) => {
+    await deleteDoc(doc(db, 'translations', id));
+  },
   getProjects: async (): Promise<Project[]> => {
       const snap = await getDocs(collection(db, 'projects'));
       const projects = mapDocs<Project>(snap);
@@ -638,24 +628,9 @@ export const StorageService = {
       }
       return projects;
   },
-
   saveProject: async (project: Project) => {
       await setDoc(doc(db, 'projects', project.id), project);
   },
-
-  getAuditLogs: async (): Promise<AuditLog[]> => {
-      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
-      const snap = await getDocs(q);
-      return mapDocs<AuditLog>(snap);
-  },
-
-  logAuditAction: async (user: User, action: string, details: string, category: AuditLog['category'] = 'system') => {
-      await addDoc(collection(db, 'audit_logs'), {
-          action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category
-      });
-  },
-
-  // --- EXISTING METHODS ---
   getWordTranslations: async (): Promise<WordTranslation[]> => {
       const snap = await getDocs(collection(db, 'word_translations'));
       return mapDocs<WordTranslation>(snap);
@@ -705,5 +680,15 @@ export const StorageService = {
   },
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
-  clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); }
+  clearAll: async () => { console.warn("Clear All disabled in Cloud Mode for safety"); },
+  getAuditLogs: async (): Promise<AuditLog[]> => {
+      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
+      const snap = await getDocs(q);
+      return mapDocs<AuditLog>(snap);
+  },
+  logAuditAction: async (user: User, action: string, details: string, category: AuditLog['category'] = 'system') => {
+      await addDoc(collection(db, 'audit_logs'), {
+          action, userId: user.id, userName: user.name, details, timestamp: Date.now(), category
+      });
+  }
 };
