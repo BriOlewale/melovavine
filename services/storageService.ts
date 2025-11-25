@@ -90,10 +90,7 @@ export const StorageService = {
 
   register: async (email: string, password: string, name: string) => {
       try {
-          // 1. Create User in Firebase Auth
           const userCred = await createUserWithEmailAndPassword(auth, email, password);
-          
-          // 2. Create User Profile in Firestore
           const newUser: User = {
               id: userCred.user.uid,
               name,
@@ -103,24 +100,10 @@ export const StorageService = {
               isVerified: false, 
               groupIds: ['g-trans']
           };
-          
           await setDoc(doc(db, 'users', newUser.id), newUser);
-
-          // 3. Send Native Firebase Verification Email
-          // This must happen while the user is still authenticated from createUserWithEmailAndPassword
-          try { 
-              await sendEmailVerification(userCred.user); 
-          } catch (emailError) { 
-              console.error("Failed to send verification email:", emailError); 
-              // Do not block registration, but user won't get email
-              throw new Error("Registration succeeded, but failed to send verification email. Please try logging in and use 'Forgot Password' if needed.");
-          }
-
-          // 4. Sign Out Immediately
-          // Forces user to verify email before logging in.
+          try { await sendEmailVerification(userCred.user); } catch (emailError) { console.error("Failed to send verification email:", emailError); }
           await signOut(auth); 
-
-          return { success: true, message: 'Verification email sent. Please check your inbox.' }; 
+          return { success: true }; 
       } catch (e: any) {
           let msg = 'Registration failed';
           if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
@@ -129,17 +112,7 @@ export const StorageService = {
       }
   },
 
-  logout: async () => {
-      await signOut(auth);
-  },
-
-  verifyEmail: async (_token: string) => {
-      // This function is now deprecated as Firebase handles native verification.
-      // However, it's called by App.tsx. It's safe to return success or throw.
-      // Since App.tsx's useEffect will call reload(), the user.emailVerified status will be updated there.
-      console.warn("StorageService.verifyEmail is deprecated. Firebase handles verification natively.");
-      return { success: true, message: 'Verification process initiated. Please log in.' };
-  },
+  logout: async () => { await signOut(auth); },
 
   updateUser: async (u: User) => { await updateDoc(doc(db, 'users', u.id), { ...u }); },
   
@@ -293,10 +266,10 @@ export const StorageService = {
 
             const updates: any = {
                 reviewCount: currentCount + 1,
-                lastReviewedAt: safeReview.createdAt,
-                lastReviewerId: safeReview.reviewerId,
-                reviewedBy: safeReview.reviewerId,
-                reviewedAt: safeReview.createdAt
+                lastReviewedAt: review.createdAt,
+                lastReviewerId: review.reviewerId,
+                reviewedBy: review.reviewerId,
+                reviewedAt: review.createdAt
             };
 
             if (newStatus) {
