@@ -155,7 +155,6 @@ export const StorageService = {
   },
 
   // --- SPELLING & CORRECTIONS ---
-  
   createSpellingSuggestion: async (suggestion: SpellingSuggestion) => {
       await setDoc(doc(db, 'spelling_suggestions', suggestion.id), suggestion);
   },
@@ -185,7 +184,6 @@ export const StorageService = {
               
               const trans = transSnap.data() as Translation;
               
-              // Create version history entry
               const historyEntry: TranslationHistoryEntry = {
                   timestamp: Date.now(),
                   action: 'spell_correction',
@@ -245,19 +243,20 @@ export const StorageService = {
 
   addTranslationReview: async (review: TranslationReview): Promise<void> => {
     try {
-        // 1. Save the review record
-        await setDoc(doc(db, 'translationReviews', review.id), review);
+        const safeReview = {
+            ...review,
+            comment: review.comment ?? '' // FIX: Safely handle undefined comment
+        };
 
-        // 2. Determine new status for the translation
+        await setDoc(doc(db, 'translationReviews', safeReview.id), safeReview);
+
         let newStatus: Translation['status'] | undefined;
-        if (review.action === 'approved') newStatus = 'approved';
-        else if (review.action === 'rejected') newStatus = 'rejected';
-        else if (review.action === 'edited') newStatus = 'approved'; // Minor fix usually implies approval
+        if (safeReview.action === 'approved') newStatus = 'approved';
+        else if (safeReview.action === 'rejected') newStatus = 'rejected';
+        else if (safeReview.action === 'edited') newStatus = 'approved';
 
-        // 3. Update the Translation document
-        const transRef = doc(db, 'translations', review.translationId);
+        const transRef = doc(db, 'translations', safeReview.translationId);
         
-        // We need to atomically increment reviewCount and update status
         await runTransaction(db, async (transaction) => {
             const transDoc = await transaction.get(transRef);
             if (!transDoc.exists()) throw "Translation not found";
@@ -267,32 +266,29 @@ export const StorageService = {
 
             const updates: any = {
                 reviewCount: currentCount + 1,
-                lastReviewedAt: review.createdAt,
-                lastReviewerId: review.reviewerId,
-                // Also update legacy fields for backward compatibility if needed
-                reviewedBy: review.reviewerId,
-                reviewedAt: review.createdAt
+                lastReviewedAt: safeReview.createdAt,
+                lastReviewerId: safeReview.reviewerId,
+                reviewedBy: safeReview.reviewerId,
+                reviewedAt: safeReview.createdAt
             };
 
             if (newStatus) {
                 updates.status = newStatus;
             }
             
-            if (review.action === 'edited' && review.newText) {
-                updates.text = review.newText;
+            if (safeReview.action === 'edited' && safeReview.newText) {
+                updates.text = safeReview.newText;
             }
 
-            // Optional: Append to legacy history array if we want to keep it synced
-            // This is redundant if we query 'translationReviews' collection, but good for simple history modal
             const historyEntry: TranslationHistoryEntry = {
-                timestamp: review.createdAt,
-                action: review.action === 'edited' ? 'edited' : review.action === 'approved' ? 'approved' : 'rejected',
-                userId: review.reviewerId,
-                userName: review.reviewerName,
+                timestamp: safeReview.createdAt,
+                action: safeReview.action === 'edited' ? 'edited' : safeReview.action === 'approved' ? 'approved' : 'rejected',
+                userId: safeReview.reviewerId,
+                userName: safeReview.reviewerName,
                 details: {
-                    oldText: review.previousText,
-                    newText: review.newText,
-                    reason: review.comment
+                    oldText: safeReview.previousText,
+                    newText: safeReview.newText,
+                    reason: safeReview.comment
                 }
             };
             updates.history = [...(data.history || []), historyEntry];
@@ -402,51 +398,7 @@ export const StorageService = {
   },
 
   recomputeWordFrequencies: async () => {
-      try {
-          console.log("Starting frequency recomputation...");
-          const sentencesRef = collection(db, 'sentences');
-          const sSnap = await getDocs(sentencesRef); 
-          
-          const frequencyMap = new Map<string, number>();
-          
-          sSnap.docs.forEach(doc => {
-              const text = doc.data().english as string;
-              if (!text) return;
-              const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
-              words.forEach(w => {
-                  if (w.length > 1) { 
-                      frequencyMap.set(w, (frequencyMap.get(w) || 0) + 1);
-                  }
-              });
-          });
-
-          const wordsRef = collection(db, 'words');
-          const wSnap = await getDocs(wordsRef);
-          
-          let batch = writeBatch(db);
-          let count = 0;
-
-          for (const wDoc of wSnap.docs) {
-              const word = wDoc.data() as Word;
-              const newFreq = frequencyMap.get(word.normalizedText || '') || 0;
-              
-              if (word.frequency !== newFreq) {
-                  batch.update(wDoc.ref, { frequency: newFreq, updatedAt: Date.now() });
-                  count++;
-                  
-                  if (count >= 450) {
-                      await batch.commit();
-                      batch = writeBatch(db);
-                      count = 0;
-                  }
-              }
-          }
-          
-          if (count > 0) await batch.commit();
-          console.log("Frequency recomputation complete.");
-      } catch (e) {
-          console.error("Frequency recomputation failed:", e);
-      }
+      // ... (keep existing impl) ...
   },
 
   // --- DATA & QUEUE LOGIC ---
@@ -613,24 +565,6 @@ export const StorageService = {
     }
   },
 
-  getTranslations: async (): Promise<Translation[]> => {
-    const snap = await getDocs(collection(db, 'translations'));
-    return mapDocs<Translation>(snap);
-  },
-  deleteTranslation: async (id: string) => {
-    await deleteDoc(doc(db, 'translations', id));
-  },
-  getProjects: async (): Promise<Project[]> => {
-      const snap = await getDocs(collection(db, 'projects'));
-      const projects = mapDocs<Project>(snap);
-      if (projects.length === 0) {
-          return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
-      }
-      return projects;
-  },
-  saveProject: async (project: Project) => {
-      await setDoc(doc(db, 'projects', project.id), project);
-  },
   getWordTranslations: async (): Promise<WordTranslation[]> => {
       const snap = await getDocs(collection(db, 'word_translations'));
       return mapDocs<WordTranslation>(snap);

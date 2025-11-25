@@ -86,7 +86,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
               reviewerId: user.id,
               reviewerName: user.name,
               action: status === 'approved' ? 'approved' : 'rejected', 
-              comment: feedback || undefined,
+              comment: feedback.trim() || '', // FIX: Ensure string
               createdAt: Date.now()
           };
 
