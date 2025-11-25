@@ -12,6 +12,19 @@ export interface Sentence {
   lockedUntil?: number | null; 
 }
 
+export interface TranslationReview {
+  id: string;
+  translationId: string;
+  reviewerId: string;
+  reviewerName: string;
+  action: 'approved' | 'rejected' | 'edited'; // 'edited' = minor fix
+  comment?: string; // Required when action === 'rejected'
+  previousText?: string; // For 'edited'
+  newText?: string; // For 'edited'
+  aiConfidence?: number; // Optional AI score at time of review
+  createdAt: number;
+}
+
 export type TranslationHistoryAction = 
   | 'created' 
   | 'edited' 
@@ -58,9 +71,15 @@ export interface Translation {
   status: 'pending' | 'approved' | 'rejected' | 'needs_attention';
   reviewedBy?: string | null;
   reviewedAt?: number | null;
+  lastReviewedAt?: number; // Alias for easier querying
+  lastReviewerId?: string;
+  reviewCount?: number;
   feedback?: string | null;
   
-  history?: TranslationHistoryEntry[];
+  // New Review History (RX2)
+  reviewHistory?: TranslationReview[];
+
+  history?: TranslationHistoryEntry[]; // Legacy/Generic history
   comments?: Comment[];
   aiQualityScore?: number;
   aiQualityFeedback?: string;
@@ -129,7 +148,7 @@ export interface Word {
   createdAt?: number;
   updatedAt?: number;
   createdBy?: string;
-  updatedBy?: string; // Added to fix build error
+  updatedBy?: string; 
   language?: string; // Optional for future multi-lang support
 }
 
