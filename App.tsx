@@ -67,6 +67,7 @@ const App: React.FC = () => {
           }
       };
 
+      // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
@@ -122,26 +123,26 @@ const App: React.FC = () => {
     await StorageService.saveTranslation(translation);
   };
   
-  const handleSaveWordTranslation = async (wt: WordTranslation) => {
-      await StorageService.saveWordTranslation(wt);
-      setWordTranslations(prev => {
-          const existingIndex = prev.findIndex(x => x.id === wt.id);
-          if (existingIndex >= 0) {
-              const copy = [...prev];
-              copy[existingIndex] = wt;
-              return copy;
-          }
-          return [...prev, wt];
-      });
+  const handleSaveWordTranslation = async (wordText: string, normalizedText: string, translation: string, notes: string, exampleSentenceId: number) => {
+      if (!user) return;
+      let wordId = words.find(w => w.normalizedText === normalizedText)?.id;
+      if (!wordId) {
+          const newWord: Word = { id: crypto.randomUUID(), text: wordText, normalizedText };
+          await StorageService.saveWord(newWord);
+          setWords(prev => [...prev, newWord]);
+          wordId = newWord.id;
+      }
+      const newWT: WordTranslation = { id: crypto.randomUUID(), wordId, languageCode: targetLanguage.code, translation, notes, exampleSentenceId, createdByUserId: user.id, timestamp: Date.now() };
+      await StorageService.saveWordTranslation(newWT);
+      setWordTranslations(prev => [...prev, newWT]);
   };
 
   // --- DICTIONARY HANDLERS ---
   
-  // UPDATED: Accepts Partial<Word> directly to match Dictionary.tsx
   const handleAddWord = async (input: Partial<Word>) => {
       if (!user || !input.text) return;
       
-      // Construct the full Word object using input or defaults
+      // SANITIZE INPUT: Ensure no undefined fields are passed to Firestore
       const newWord: Word = {
         id: input.id || crypto.randomUUID(),
         language: targetLanguage.code,
@@ -149,7 +150,7 @@ const App: React.FC = () => {
         normalizedText: input.normalizedText || input.text.toLowerCase().trim(),
         meanings: input.meanings || [],
         categories: (input.categories || []) as WordCategory[],
-        notes: input.notes,
+        notes: input.notes || null, // Convert undefined to null for Firestore
         frequency: input.frequency || 0,
         createdAt: input.createdAt || Date.now(),
         updatedAt: Date.now(),
