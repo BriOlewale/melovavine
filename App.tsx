@@ -67,20 +67,6 @@ const App: React.FC = () => {
           }
       };
 
-      // Check for verification token in URL
-      const params = new URLSearchParams(window.location.search);
-      const verifyToken = params.get('verify');
-      if (verifyToken) {
-          StorageService.verifyEmail(verifyToken).then(res => {
-              if (res.success) {
-                  alert("✅ " + res.message); 
-                  window.history.replaceState({}, document.title, window.location.pathname);
-              } else {
-                  alert("❌ " + res.message); 
-              }
-          });
-      }
-
       // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
@@ -333,7 +319,7 @@ const App: React.FC = () => {
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
 
   // Wrapper for old signature compatibility inside Translator component
-  const handleSaveWordTranslationLegacy = (wt: string, nt: string, t: string, n: string, id: number) => {
+  const handleSaveWordTranslationLegacy = (_wt: string, nt: string, t: string, n: string, id: number) => {
       // This handles the old signature from Translator.tsx (create new word translation)
       if (!user) return;
       // Find word ID from words state
