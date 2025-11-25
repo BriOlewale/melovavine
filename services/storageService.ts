@@ -448,6 +448,56 @@ export const StorageService = {
   },
 
   // --- DATA & QUEUE LOGIC ---
+
+    // Count how many sentences exist in Firestore
+  getSentenceCount: async (): Promise<number> => {
+      const coll = collection(db, 'sentences');
+      const snapshot = await getCountFromServer(coll);
+      return snapshot.data().count;
+  },
+
+  // Bulk import / save sentences with batching and initial metadata
+  saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
+      const CHUNK_SIZE = 450;
+
+      for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
+          const chunk = sentences.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+
+          chunk.forEach(s => {
+              if (s.id) {
+                  const ref = doc(db, 'sentences', s.id.toString());
+
+                  let diff: 1 | 2 | 3 = 2;
+                  if (s.english.length < 20) diff = 1;
+                  if (s.english.length > 100) diff = 3;
+
+                  const enhancedSentence: Sentence = {
+                      ...s,
+                      priorityScore: StorageService.calculateInitialPriority(s.english),
+                      status: 'open',
+                      translationCount: 0,
+                      targetTranslations: TARGET_REDUNDANCY,
+                      lockedBy: null,
+                      lockedUntil: null,
+                      difficulty: diff,
+                      length: s.english.length
+                  };
+
+                  batch.set(ref, enhancedSentence);
+              }
+          });
+
+          await batch.commit();
+
+          if (onProgress) {
+              onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
+          }
+
+          // Small pause to avoid hammering Firestore
+          await new Promise(resolve => setTimeout(resolve, 200));
+      }
+  },
   
   getSentences: async (): Promise<Sentence[]> => {
     const q = query(collection(db, 'sentences'), limit(2000)); 
