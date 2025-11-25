@@ -7,7 +7,7 @@ import { StorageService } from '../services/storageService';
 import { SpellingCorrectionModal } from './SpellingCorrectionModal';
 
 interface TranslatorProps {
-  sentences: Sentence[]; 
+  sentences: Sentence[]; // Kept for type compat
   translations: Translation[];
   user: User;
   users?: User[];
@@ -38,7 +38,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
   const processedIds = useRef<Set<number>>(new Set());
   const SESSION_GOAL = 10;
 
-  // Find existing translation for the current task by THIS user
   const sentenceTranslations = translations.filter(t => t.sentenceId === currentTask?.id && t.languageCode === targetLanguage.code);
   const myTranslation = sentenceTranslations.find(t => t.translatorId === user.id);
   const communityTranslations = sentenceTranslations.filter(t => t.translatorId !== user.id).sort((a, b) => b.votes - a.votes);
@@ -53,8 +52,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
   useEffect(() => {
       if (myTranslation) {
           setText(myTranslation.text);
-      } else if (currentTask && !myTranslation) {
-         // Logic to clear text is handled in loadNextTask
       }
   }, [myTranslation, currentTask]);
 
@@ -67,7 +64,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
           let task: Sentence | null = null;
           let attempts = 0;
           
-          // Get list of IDs user has already translated from the loaded translations prop
           const myDoneIds = new Set(translations.filter(t => t.translatorId === user.id).map(t => t.sentenceId));
           
           while (attempts < 5) {
@@ -192,7 +188,6 @@ export const Translator: React.FC<TranslatorProps> = ({ translations, user, user
       setIsSpellingModalOpen(true);
   };
 
-  // SUCCESS STATE VIEW
   if (showSuccess) return (
       <div className="max-w-3xl mx-auto py-20 text-center animate-fade-in">
           <div className="bg-white rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center shadow-lg shadow-emerald-100 border-4 border-emerald-50">
