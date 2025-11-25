@@ -149,7 +149,7 @@ const App: React.FC = () => {
         normalizedText: input.normalizedText || input.text.toLowerCase().trim(),
         meanings: input.meanings || [],
         categories: (input.categories || []) as WordCategory[],
-        notes: input.notes ?? null, // Use null if undefined for Firestore compatibility
+        notes: input.notes || undefined, // FIX: Use undefined instead of null for optional string field
         frequency: input.frequency || 0,
         createdAt: input.createdAt || Date.now(),
         updatedAt: Date.now(),
