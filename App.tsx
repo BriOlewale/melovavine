@@ -10,7 +10,7 @@ import { CommunityHub } from './components/CommunityHub';
 import { Corpus } from './components/Corpus';
 import { Auth } from './components/Auth';
 import { StorageService } from './services/storageService';
-import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report, WordCorrection } from './types';
+import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report, WordCorrection, WordCategory } from './types';
 import { auth } from './services/firebaseConfig';
 // @ts-ignore
 import { onAuthStateChanged } from 'firebase/auth';
@@ -66,20 +66,6 @@ const App: React.FC = () => {
               setIsLoading(false);
           }
       };
-
-      // Check for verification token in URL
-      const params = new URLSearchParams(window.location.search);
-      const verifyToken = params.get('verify');
-      if (verifyToken) {
-          StorageService.verifyEmail(verifyToken).then(res => {
-              if (res.success) {
-                  alert("✅ " + res.message); 
-                  window.history.replaceState({}, document.title, window.location.pathname);
-              } else {
-                  alert("❌ " + res.message); 
-              }
-          });
-      }
 
       // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
@@ -153,15 +139,16 @@ const App: React.FC = () => {
 
   // --- DICTIONARY HANDLERS ---
   
-  const handleAddWord = async (input: { text: string; meanings: string[]; categories: string[]; notes?: string }) => {
-      if (!user) return;
+  // Updated signature to match Dictionary.tsx expectation (Partial<Word>)
+  const handleAddWord = async (input: Partial<Word>) => {
+      if (!user || !input.text) return;
       const newWord: Word = {
         id: crypto.randomUUID(),
         language: targetLanguage.code,
         text: input.text,
         normalizedText: input.text.toLowerCase().trim(),
-        meanings: input.meanings,
-        categories: input.categories,
+        meanings: input.meanings || [],
+        categories: (input.categories || []) as WordCategory[],
         notes: input.notes,
         frequency: 0,
         createdAt: Date.now(),
@@ -178,22 +165,19 @@ const App: React.FC = () => {
       }
   };
 
-  const handleSuggestWordCorrection = async (
-      wordId: string,
-      suggestion: { type: 'meaning' | 'spelling' | 'category' | 'note'; newValue: any; comment?: string }
-    ) => {
-      if (!user) return;
-      const word = words.find(w => w.id === wordId);
+  const handleSuggestWordCorrection = async (correction: Partial<WordCorrection>) => {
+      if (!user || !correction.wordId || !correction.suggestionType) return;
+      const word = words.find(w => w.id === correction.wordId);
       if (!word) return;
 
-      const correction: WordCorrection = {
+      const fullCorrection: WordCorrection = {
         id: crypto.randomUUID(),
-        wordId,
+        wordId: correction.wordId,
         suggestedBy: user.id,
         suggestedByName: user.name,
-        suggestionType: suggestion.type,
+        suggestionType: correction.suggestionType,
         oldValue: (() => {
-          switch (suggestion.type) {
+          switch (correction.suggestionType) {
             case 'meaning': return word.meanings;
             case 'spelling': return word.text;
             case 'category': return word.categories;
@@ -201,13 +185,13 @@ const App: React.FC = () => {
             default: return null;
           }
         })(),
-        newValue: suggestion.newValue,
+        newValue: correction.newValue,
         createdAt: Date.now(),
         status: 'pending',
       };
 
       try {
-          await StorageService.submitWordCorrection(correction);
+          await StorageService.submitWordCorrection(fullCorrection);
           toast.success("Correction suggestion submitted!");
       } catch (error) {
           console.error(error);
