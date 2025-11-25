@@ -90,7 +90,10 @@ export const StorageService = {
 
   register: async (email: string, password: string, name: string) => {
       try {
+          // 1. Create User in Firebase Auth
           const userCred = await createUserWithEmailAndPassword(auth, email, password);
+          
+          // 2. Create User Profile in Firestore
           const newUser: User = {
               id: userCred.user.uid,
               name,
@@ -100,10 +103,24 @@ export const StorageService = {
               isVerified: false, 
               groupIds: ['g-trans']
           };
+          
           await setDoc(doc(db, 'users', newUser.id), newUser);
-          try { await sendEmailVerification(userCred.user); } catch (emailError) { console.error("Failed to send verification email:", emailError); }
+
+          // 3. Send Native Firebase Verification Email
+          // This must happen while the user is still authenticated from createUserWithEmailAndPassword
+          try { 
+              await sendEmailVerification(userCred.user); 
+          } catch (emailError) { 
+              console.error("Failed to send verification email:", emailError); 
+              // Do not block registration, but user won't get email
+              throw new Error("Registration succeeded, but failed to send verification email. Please try logging in and use 'Forgot Password' if needed.");
+          }
+
+          // 4. Sign Out Immediately
+          // Forces user to verify email before logging in.
           await signOut(auth); 
-          return { success: true }; 
+
+          return { success: true, message: 'Verification email sent. Please check your inbox.' }; 
       } catch (e: any) {
           let msg = 'Registration failed';
           if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
@@ -112,7 +129,17 @@ export const StorageService = {
       }
   },
 
-  logout: async () => { await signOut(auth); },
+  logout: async () => {
+      await signOut(auth);
+  },
+
+  verifyEmail: async (_token: string) => {
+      // This function is now deprecated as Firebase handles native verification.
+      // However, it's called by App.tsx. It's safe to return success or throw.
+      // Since App.tsx's useEffect will call reload(), the user.emailVerified status will be updated there.
+      console.warn("StorageService.verifyEmail is deprecated. Firebase handles verification natively.");
+      return { success: true, message: 'Verification process initiated. Please log in.' };
+  },
 
   updateUser: async (u: User) => { await updateDoc(doc(db, 'users', u.id), { ...u }); },
   
@@ -155,7 +182,6 @@ export const StorageService = {
   },
 
   // --- SPELLING & CORRECTIONS ---
-  
   createSpellingSuggestion: async (suggestion: SpellingSuggestion) => {
       await setDoc(doc(db, 'spelling_suggestions', suggestion.id), suggestion);
   },
@@ -185,7 +211,6 @@ export const StorageService = {
               
               const trans = transSnap.data() as Translation;
               
-              // Create version history entry
               const historyEntry: TranslationHistoryEntry = {
                   timestamp: Date.now(),
                   action: 'spell_correction',
@@ -245,19 +270,20 @@ export const StorageService = {
 
   addTranslationReview: async (review: TranslationReview): Promise<void> => {
     try {
-        // 1. Save the review record
-        await setDoc(doc(db, 'translationReviews', review.id), review);
+        const safeReview = {
+            ...review,
+            comment: review.comment ?? '' 
+        };
 
-        // 2. Determine new status for the translation
+        await setDoc(doc(db, 'translationReviews', safeReview.id), safeReview);
+
         let newStatus: Translation['status'] | undefined;
-        if (review.action === 'approved') newStatus = 'approved';
-        else if (review.action === 'rejected') newStatus = 'rejected';
-        else if (review.action === 'edited') newStatus = 'approved'; // Minor fix usually implies approval
+        if (safeReview.action === 'approved') newStatus = 'approved';
+        else if (safeReview.action === 'rejected') newStatus = 'rejected';
+        else if (safeReview.action === 'edited') newStatus = 'approved'; 
 
-        // 3. Update the Translation document
-        const transRef = doc(db, 'translations', review.translationId);
+        const transRef = doc(db, 'translations', safeReview.translationId);
         
-        // We need to atomically increment reviewCount and update status
         await runTransaction(db, async (transaction) => {
             const transDoc = await transaction.get(transRef);
             if (!transDoc.exists()) throw "Translation not found";
@@ -267,32 +293,29 @@ export const StorageService = {
 
             const updates: any = {
                 reviewCount: currentCount + 1,
-                lastReviewedAt: review.createdAt,
-                lastReviewerId: review.reviewerId,
-                // Also update legacy fields for backward compatibility if needed
-                reviewedBy: review.reviewerId,
-                reviewedAt: review.createdAt
+                lastReviewedAt: safeReview.createdAt,
+                lastReviewerId: safeReview.reviewerId,
+                reviewedBy: safeReview.reviewerId,
+                reviewedAt: safeReview.createdAt
             };
 
             if (newStatus) {
                 updates.status = newStatus;
             }
             
-            if (review.action === 'edited' && review.newText) {
-                updates.text = review.newText;
+            if (safeReview.action === 'edited' && safeReview.newText) {
+                updates.text = safeReview.newText;
             }
 
-            // Optional: Append to legacy history array if we want to keep it synced
-            // This is redundant if we query 'translationReviews' collection, but good for simple history modal
             const historyEntry: TranslationHistoryEntry = {
-                timestamp: review.createdAt,
-                action: review.action === 'edited' ? 'edited' : review.action === 'approved' ? 'approved' : 'rejected',
-                userId: review.reviewerId,
-                userName: review.reviewerName,
+                timestamp: safeReview.createdAt,
+                action: safeReview.action === 'edited' ? 'edited' : safeReview.action === 'approved' ? 'approved' : 'rejected',
+                userId: safeReview.reviewerId,
+                userName: safeReview.reviewerName,
                 details: {
-                    oldText: review.previousText,
-                    newText: review.newText,
-                    reason: review.comment
+                    oldText: safeReview.previousText,
+                    newText: safeReview.newText,
+                    reason: safeReview.comment
                 }
             };
             updates.history = [...(data.history || []), historyEntry];
@@ -613,24 +636,6 @@ export const StorageService = {
     }
   },
 
-  getTranslations: async (): Promise<Translation[]> => {
-    const snap = await getDocs(collection(db, 'translations'));
-    return mapDocs<Translation>(snap);
-  },
-  deleteTranslation: async (id: string) => {
-    await deleteDoc(doc(db, 'translations', id));
-  },
-  getProjects: async (): Promise<Project[]> => {
-      const snap = await getDocs(collection(db, 'projects'));
-      const projects = mapDocs<Project>(snap);
-      if (projects.length === 0) {
-          return [{ id: 'default-project', name: 'General', targetLanguageCode: 'hula', status: 'active', createdAt: Date.now() }];
-      }
-      return projects;
-  },
-  saveProject: async (project: Project) => {
-      await setDoc(doc(db, 'projects', project.id), project);
-  },
   getWordTranslations: async (): Promise<WordTranslation[]> => {
       const snap = await getDocs(collection(db, 'word_translations'));
       return mapDocs<WordTranslation>(snap);
