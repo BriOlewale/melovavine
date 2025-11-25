@@ -3,6 +3,7 @@ import { Sentence, Translation, User, Language, SpellingSuggestion, TranslationR
 import { Button, Card, Badge, toast, Skeleton, EmptyState, Modal, Input } from './UI';
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
+import { TranslationHistoryModal } from './TranslationHistoryModal';
 
 interface ReviewerProps {
   sentences: Sentence[];
@@ -17,36 +18,31 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   const [tab, setTab] = useState<'translations' | 'spelling'>('translations');
   const [spellingSuggestions, setSpellingSuggestions] = useState<SpellingSuggestion[]>([]);
   
-  // Translation Review State
-  // Filter for pending OR needs_attention (so reviewers can re-review fixes)
   const pending = translations.filter(t => t.languageCode === targetLanguage.code && (t.status === 'pending' || t.status === 'needs_attention'));
-  const [idx, setIdx] = useState(0);
+  const [idx] = useState(0); // Removed setIdx as it was unused
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedback, setFeedback] = useState('');
   
-  // Minor Fix State
   const [isMinorFixOpen, setIsMinorFixOpen] = useState(false);
   const [editedText, setEditedText] = useState('');
   const [fixComment, setFixComment] = useState('Minor fix');
 
-  // History State
   const [history, setHistory] = useState<TranslationReview[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   
+  const [viewHistory, setViewHistory] = useState<Translation | null>(null);
+
   const current = pending[idx];
-  // Safely find sentence, or fallback if missing from local cache
   const sentence = current ? sentences.find(s => s.id === current.sentenceId) : null;
   
   const canApprove = StorageService.hasPermission(user, 'translation.approve');
 
-  // Load suggestions when tab changes
   useEffect(() => {
       if (tab === 'spelling') {
           loadSuggestions();
       }
   }, [tab]);
 
-  // Reset local state when current item changes
   useEffect(() => {
       setFeedback('');
       if (current) {
@@ -82,42 +78,34 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       if (!current) return;
 
       if ((status === 'rejected' || status === 'needs_attention') && !feedback.trim()) {
-          toast.error("Please explain why you are rejecting this translation.");
+          toast.error("Please provide feedback for rejection or attention requests.");
           return;
       }
 
       setIsProcessing(true);
       try {
-          // Create review object
           const review: TranslationReview = {
               id: crypto.randomUUID(),
               translationId: current.id,
               reviewerId: user.id,
               reviewerName: user.name,
-              action: status === 'approved' ? 'approved' : 'rejected', // needs_attention maps to rejected in review object logic usually, or custom status
+              action: status === 'approved' ? 'approved' : 'rejected', 
               comment: feedback || undefined,
               createdAt: Date.now()
           };
 
-          // Use the new StorageService method which handles status updates and history
           await StorageService.addTranslationReview(review);
-          
-          // Also update local UI via prop if needed (though StorageService update should propagate via listener eventually)
-          // We call the prop callback to keep the parent App state in sync optimistically if needed, 
-          // but StorageService.addTranslationReview handles the DB write.
-          // To be safe and keep UI responsive, we can still call onReviewAction which might update local state.
           await onReviewAction(current.id, status, feedback);
 
           toast.success(status === 'approved' ? "Translation approved! 🎉" : "Feedback submitted.");
           setFeedback(''); 
-          // Move to next item (simple logic: if we approved/rejected, it leaves 'pending' state, so filtering removes it)
-          // But since 'pending' array is derived from props, we wait for parent update or just increment idx?
-          // Better: filtering happens automatically if parent state updates. 
-          // If parent state doesn't update immediately, we might see stale data. 
-          // For now, rely on parent update.
       } catch (e: any) {
           console.error("Review Error", e);
-          toast.error("Action failed.");
+          if (e.code === 'resource-exhausted') {
+              toast.error("Quota Exceeded. Try again tomorrow.");
+          } else {
+              toast.error("Action failed.");
+          }
       } finally {
           setIsProcessing(false);
       }
@@ -134,7 +122,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       try {
           await StorageService.applyMinorFix(current.id, editedText, user);
           
-          // Also log this as a review action 'edited'
           const review: TranslationReview = {
              id: crypto.randomUUID(),
              translationId: current.id,
@@ -150,8 +137,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
 
           toast.success("Minor fix applied and approved!");
           setIsMinorFixOpen(false);
-          // Trigger parent update if necessary, or rely on DB listener
-          // onReviewAction(current.id, 'approved', 'Minor Fix Applied'); // Optional
       } catch (e) {
           console.error(e);
           toast.error("Failed to apply fix.");
@@ -199,7 +184,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   
   return (
     <div className="max-w-3xl mx-auto pb-20 space-y-6">
-       {/* Tabs */}
        <div className="flex justify-center p-1 bg-slate-100 rounded-xl w-fit mx-auto">
            <button onClick={() => setTab('translations')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${tab === 'translations' ? 'bg-white shadow text-brand-600' : 'text-slate-500'}`}>
                Pending Translations ({pending.length})
@@ -209,7 +193,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
            </button>
        </div>
 
-       {/* TAB: TRANSLATIONS */}
        {tab === 'translations' && (
            <>
              {pending.length === 0 ? (
@@ -258,35 +241,28 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                                 </div>
                             </div>
 
-                            {/* Feedback Input */}
                             <div className="mb-4">
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                    Reviewer Feedback <span className="text-rose-500">*</span>
-                                </label>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Reviewer Feedback (Required for Rejection)</label>
                                 <textarea 
                                     className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                                     rows={2}
-                                    placeholder="Explain why you are rejecting or editing..."
+                                    placeholder="Add comments or corrections here..."
                                     value={feedback}
                                     onChange={e => setFeedback(e.target.value)}
                                 />
                             </div>
 
-                            {/* Action Bar */}
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                                <Button variant="secondary" onClick={handleAI} disabled={isProcessing || !sentence} className="col-span-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                <Button variant="secondary" onClick={handleAI} disabled={isProcessing || !sentence} className="sm:col-span-1">
                                     AI Check
                                 </Button>
-                                <Button variant="secondary" onClick={() => handleAction('needs_attention')} disabled={isProcessing || !canApprove || !feedback.trim()} className="col-span-1 text-amber-600 border-amber-200 hover:bg-amber-50">
+                                <Button variant="secondary" onClick={() => handleAction('needs_attention')} disabled={isProcessing || !canApprove} className="sm:col-span-1 text-amber-600 border-amber-200 hover:bg-amber-50">
                                     Flag
                                 </Button>
-                                <Button variant="secondary" onClick={() => setIsMinorFixOpen(true)} disabled={isProcessing || !canApprove} className="col-span-1 text-blue-600 border-blue-200 hover:bg-blue-50">
-                                    Minor Fix
-                                </Button>
-                                <Button variant="danger" onClick={() => handleAction('rejected')} disabled={isProcessing || !canApprove || !feedback.trim()} className="col-span-1">
+                                <Button variant="danger" onClick={() => handleAction('rejected')} disabled={isProcessing || !canApprove} className="sm:col-span-1">
                                     Reject
                                 </Button>
-                                <Button variant="primary" onClick={() => handleAction('approved')} disabled={isProcessing || !canApprove} className="col-span-1 bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
+                                <Button variant="primary" onClick={() => handleAction('approved')} disabled={isProcessing || !canApprove} className="sm:col-span-1 bg-emerald-500 hover:bg-emerald-600 border-none shadow-emerald-200">
                                     Approve
                                 </Button>
                             </div>
@@ -298,7 +274,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
            </>
        )}
 
-       {/* TAB: SPELLING SUGGESTIONS */}
        {tab === 'spelling' && (
            <div className="space-y-4">
                {spellingSuggestions.length === 0 && <EmptyState icon="✨" title="No suggestions" description="There are no spelling corrections to review right now." />}
@@ -339,7 +314,12 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
            </div>
        )}
 
-       {/* Minor Fix Modal */}
+       <TranslationHistoryModal 
+          isOpen={!!viewHistory} 
+          onClose={() => setViewHistory(null)} 
+          translation={viewHistory} 
+       />
+
        <Modal isOpen={isMinorFixOpen} onClose={() => setIsMinorFixOpen(false)} title="Apply Minor Fix">
            <div className="space-y-4">
                <p className="text-sm text-slate-500">Edit the translation directly. This will approve the translation with your changes.</p>
@@ -373,7 +353,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
            </div>
        </Modal>
 
-       {/* History Modal / Drawer */}
        <Modal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} title="Translation History">
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                 {history.length === 0 ? (
