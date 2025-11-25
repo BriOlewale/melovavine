@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserGroup, Project, AuditLog, Permission } from '../types'; 
+import { User, UserGroup, Project, AuditLog, Permission, Sentence } from '../types'; 
 import { Button, Card, Input, Modal, Badge } from './UI';
 import { StorageService, ALL_PERMISSIONS } from '../services/storageService'; 
 
@@ -81,7 +81,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
           english: x.english || x.sentence,
           projectId: projects.length > 0 ? projects[0].id : 'default-project',
         }))
-        .filter((x: any) => x.id && x.english);
+        .filter((x: any) => x.id && x.english) as Sentence[];
 
       if (formatted.length === 0) {
         const msg =
