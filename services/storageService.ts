@@ -155,6 +155,7 @@ export const StorageService = {
   },
 
   // --- SPELLING & CORRECTIONS ---
+  
   createSpellingSuggestion: async (suggestion: SpellingSuggestion) => {
       await setDoc(doc(db, 'spelling_suggestions', suggestion.id), suggestion);
   },
@@ -241,6 +242,7 @@ export const StorageService = {
   },
 
   // --- COMMUNITY REPORTING ---
+
   createReport: async (report: Report) => {
       await setDoc(doc(db, 'reports', report.id), report);
   },
@@ -252,6 +254,7 @@ export const StorageService = {
   },
 
   // --- DICTIONARY ---
+
   getWords: async (): Promise<Word[]> => {
       const snap = await getDocs(collection(db, 'words'));
       return mapDocs<Word>(snap);
@@ -264,12 +267,17 @@ export const StorageService = {
 
   saveWord: async (word: Word) => {
       const now = Date.now();
-      const enhancedWord: Word = {
+      const enhancedWord: any = {
           ...word,
           normalizedText: word.normalizedText || word.text.toLowerCase().trim(),
           createdAt: word.createdAt || now,
           updatedAt: now,
       };
+
+      // Ensure no undefined fields are sent to Firestore
+      if (enhancedWord.notes === undefined) delete enhancedWord.notes;
+      if (enhancedWord.updatedBy === undefined) delete enhancedWord.updatedBy;
+      
       await setDoc(doc(db, 'words', word.id), enhancedWord, { merge: true });
   },
 

@@ -67,6 +67,7 @@ const App: React.FC = () => {
           }
       };
 
+      // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
@@ -122,9 +123,6 @@ const App: React.FC = () => {
     await StorageService.saveTranslation(translation);
   };
   
-  // --- DICTIONARY HANDLERS ---
-
-  // 1. The Object-based handler (For internal use + Dictionary component)
   const handleSaveWordTranslation = async (wt: WordTranslation) => {
       await StorageService.saveWordTranslation(wt);
       setWordTranslations(prev => {
@@ -136,53 +134,14 @@ const App: React.FC = () => {
           }
           return [...prev, wt];
       });
-      toast.success("Added to Dictionary!");
   };
 
-  // 2. The 5-Argument handler (For Translator component compatibility)
-  // This creates the Word if needed, then creates the WordTranslation object
-  const handleSaveWordTranslationFromTranslator = async (wordText: string, normalizedText: string, translation: string, notes: string, exampleSentenceId: number) => {
-      if (!user) return;
-      
-      let word = words.find(w => w.normalizedText === normalizedText);
-      let wordId = word?.id;
-
-      if (!word) {
-          wordId = crypto.randomUUID();
-          const newWord: Word = { 
-              id: wordId, 
-              text: wordText, 
-              normalizedText,
-              meanings: [translation], 
-              categories: [],
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-              createdBy: user.id,
-              updatedBy: user.id,
-              frequency: 1
-          };
-          await StorageService.saveWord(newWord);
-          setWords(prev => [...prev, newWord]);
-      }
-
-      const newWT: WordTranslation = { 
-          id: crypto.randomUUID(), 
-          wordId: wordId!, 
-          languageCode: targetLanguage.code, 
-          translation, 
-          notes, 
-          exampleSentenceId, 
-          createdByUserId: user.id, 
-          timestamp: Date.now() 
-      };
-
-      // Call the main object handler
-      await handleSaveWordTranslation(newWT);
-  };
+  // --- DICTIONARY HANDLERS ---
   
   const handleAddWord = async (input: Partial<Word>) => {
       if (!user || !input.text) return;
       
+      // SANITIZE INPUT: Ensure no undefined fields are passed to Firestore
       const newWord: Word = {
         id: input.id || crypto.randomUUID(),
         language: targetLanguage.code,
@@ -190,7 +149,7 @@ const App: React.FC = () => {
         normalizedText: input.normalizedText || input.text.toLowerCase().trim(),
         meanings: input.meanings || [],
         categories: (input.categories || []) as WordCategory[],
-        notes: input.notes || undefined, 
+        notes: input.notes ?? null, // Use null if undefined for Firestore compatibility
         frequency: input.frequency || 0,
         createdAt: input.createdAt || Date.now(),
         updatedAt: Date.now(),
@@ -202,9 +161,9 @@ const App: React.FC = () => {
           await StorageService.saveWord(newWord);
           setWords(prev => [...prev, newWord]);
           toast.success("Word added successfully");
-      } catch (error) {
-          console.error(error);
-          toast.error("Failed to add word.");
+      } catch (error: any) {
+          console.error('Failed to add word:', error);
+          toast.error(`Failed to add word: ${error?.code || error?.message || 'Unknown error'}`);
       }
   };
 
@@ -363,6 +322,49 @@ const App: React.FC = () => {
   const handleLogin = (loggedInUser: User) => { setUser(loggedInUser); };
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
 
+  // Wrapper for old signature compatibility inside Translator component
+  const handleSaveWordTranslationLegacy = async (_wt: string, wordText: string, translation: string, notes: string, sentenceId: number) => {
+      if (!user) return;
+      
+      // 1. CHECK IF WORD EXISTS, CREATE IF NOT
+      const normalizedText = wordText.toLowerCase().trim();
+      let word = words.find(w => w.normalizedText === normalizedText);
+      let wordId = word?.id;
+
+      if (!word) {
+          wordId = crypto.randomUUID();
+          const newWord: Word = {
+              id: wordId,
+              text: wordText,
+              normalizedText: normalizedText,
+              meanings: [translation], 
+              categories: [],
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              createdBy: user.id,
+              updatedBy: user.id,
+              frequency: 1
+          };
+          await StorageService.saveWord(newWord);
+          setWords(prev => [...prev, newWord]);
+      }
+
+      // 2. SAVE TRANSLATION LINK
+      const newWT: WordTranslation = { 
+          id: crypto.randomUUID(), 
+          wordId: wordId!, 
+          languageCode: targetLanguage.code, 
+          translation: translation, 
+          notes: notes, 
+          exampleSentenceId: sentenceId, 
+          createdByUserId: user.id, 
+          timestamp: Date.now() 
+      };
+      
+      handleSaveWordTranslation(newWT);
+      toast.success("Word saved to dictionary!");
+  };
+
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div></div>;
   if (!user) return <Auth onLogin={handleLogin} />;
 
@@ -383,7 +385,7 @@ const App: React.FC = () => {
         <div className="space-y-8">
             {currentPage === 'dashboard' && <Dashboard sentences={sentences} totalCount={totalSentenceCount} translations={translations} language={targetLanguage} users={allUsers} onNavigate={handleNavigate} />}
             {currentPage === 'community' && <CommunityHub user={user} announcements={announcements} forumTopics={forumTopics} onAddAnnouncement={handleAddAnnouncement} onAddTopic={handleAddTopic} onReplyToTopic={handleReplyToTopic} />}
-            {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslationFromTranslator} onAddComment={handleAddComment} onFlag={handleFlag} />}
+            {currentPage === 'translate' && <Translator sentences={sentences} translations={translations} user={user} users={allUsers} targetLanguage={targetLanguage} onSaveTranslation={handleSaveTranslation} onVote={handleVote} words={words} wordTranslations={wordTranslations} onSaveWordTranslation={handleSaveWordTranslationLegacy} onAddComment={handleAddComment} onFlag={handleFlag} />}
             {currentPage === 'dictionary' && <Dictionary words={words} wordTranslations={wordTranslations} translations={translations} user={user} onDeleteWord={handleDeleteWord} onAddWord={handleAddWord} onSuggestCorrection={handleSuggestWordCorrection} />}
             {currentPage === 'corpus' && <Corpus sentences={sentences} translations={translations} users={allUsers} targetLanguage={targetLanguage} user={user} onVote={handleVote} onAddComment={handleAddComment} onFlag={handleFlag} />}
             {currentPage === 'leaderboard' && <Leaderboard translations={translations} users={allUsers} targetLanguage={targetLanguage} />}
