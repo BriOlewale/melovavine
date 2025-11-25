@@ -49,7 +49,7 @@ const App: React.FC = () => {
                 StorageService.getSentences(),
                 StorageService.getTranslations(),
                 StorageService.getWords(),
-                StorageService.getWordTranslations(), // Load Word Translations
+                StorageService.getWordTranslations(),
                 StorageService.getAllUsers(),
                 StorageService.getAnnouncements(),
                 StorageService.getForumTopics(),
@@ -67,7 +67,6 @@ const App: React.FC = () => {
           }
       };
 
-      // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
@@ -136,8 +135,6 @@ const App: React.FC = () => {
       });
   };
 
-  // --- DICTIONARY HANDLERS ---
-  
   const handleAddWord = async (input: Partial<Word>) => {
       if (!user || !input.text) return;
       const newWord: Word = {
@@ -152,7 +149,7 @@ const App: React.FC = () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         createdBy: user.id,
-        updatedBy: user.id, 
+        updatedBy: user.id,
       };
       try {
           await StorageService.saveWord(newWord);
@@ -212,7 +209,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- REVIEW HANDLER ---
   const handleReviewAction = async (
       translationId: string, 
       status: 'approved' | 'rejected' | 'needs_attention', 
@@ -319,24 +315,48 @@ const App: React.FC = () => {
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
 
   // Wrapper for old signature compatibility inside Translator component
-  const handleSaveWordTranslationLegacy = (_wt: string, nt: string, t: string, n: string, id: number) => {
-      // This handles the old signature from Translator.tsx (create new word translation)
+  const handleSaveWordTranslationLegacy = async (_wt: string, wordText: string, translation: string, notes: string, sentenceId: number) => {
       if (!user) return;
-      // Find word ID from words state
-      const word = words.find(w => w.normalizedText === nt);
-      const wordId = word ? word.id : crypto.randomUUID(); // Fallback if word creation is pending
+      
+      // 1. CHECK IF WORD EXISTS, CREATE IF NOT
+      const normalizedText = wordText.toLowerCase().trim();
+      let word = words.find(w => w.normalizedText === normalizedText);
+      let wordId = word?.id;
 
+      if (!word) {
+          wordId = crypto.randomUUID();
+          const newWord: Word = {
+              id: wordId,
+              text: wordText,
+              normalizedText: normalizedText,
+              meanings: [translation], // Use translation as initial meaning
+              categories: [],
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              createdBy: user.id,
+              updatedBy: user.id,
+              frequency: 1
+          };
+          // Update DB
+          await StorageService.saveWord(newWord);
+          // Update Local State immediately so subsequent saves find it
+          setWords(prev => [...prev, newWord]);
+      }
+
+      // 2. SAVE TRANSLATION LINK
       const newWT: WordTranslation = { 
           id: crypto.randomUUID(), 
-          wordId, 
+          wordId: wordId!, 
           languageCode: targetLanguage.code, 
-          translation: t, 
-          notes: n, 
-          exampleSentenceId: id, 
+          translation: translation, 
+          notes: notes, 
+          exampleSentenceId: sentenceId, 
           createdByUserId: user.id, 
           timestamp: Date.now() 
       };
+      
       handleSaveWordTranslation(newWT);
+      toast.success("Word saved to dictionary!");
   };
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div></div>;
