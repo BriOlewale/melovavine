@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sentence, Translation, User, Language, SpellingSuggestion, TranslationReview } from '../types';
-import { Button, Card, Badge, toast, Skeleton, EmptyState, Modal, Input } from './UI';
+import { Button, Card, Badge, toast, Skeleton, EmptyState } from './UI';
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
 import { TranslationHistoryModal } from './TranslationHistoryModal';
@@ -29,7 +29,7 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState<TranslationReview[]>([]);
   
-  const [viewHistory, setViewHistory] = useState<Translation | null>(null); // Kept for legacy full history if needed, but drawer handles reviews now
+  const [viewHistory, setViewHistory] = useState<Translation | null>(null);
 
   const current = pending[idx];
   const sentence = current ? sentences.find(s => s.id === current.sentenceId) : null;
@@ -309,7 +309,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
            </div>
        )}
 
-       {/* Legacy History Modal for non-review usage if needed */}
        <TranslationHistoryModal 
           isOpen={!!viewHistory} 
           onClose={() => setViewHistory(null)} 
