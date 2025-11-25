@@ -1,4 +1,4 @@
-import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry, Report, WordCorrection } from '../types';
+import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry, Report, WordCorrection, TranslationReview } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
   collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc, getCountFromServer, where, runTransaction 
@@ -241,8 +241,113 @@ export const StorageService = {
       });
   },
 
-  // --- COMMUNITY REPORTING ---
+  // --- REVIEW & HISTORY (RX2) ---
 
+  addTranslationReview: async (review: TranslationReview): Promise<void> => {
+    try {
+        // 1. Save the review record
+        await setDoc(doc(db, 'translationReviews', review.id), review);
+
+        // 2. Determine new status for the translation
+        let newStatus: Translation['status'] | undefined;
+        if (review.action === 'approved') newStatus = 'approved';
+        else if (review.action === 'rejected') newStatus = 'rejected';
+        else if (review.action === 'edited') newStatus = 'approved'; // Minor fix usually implies approval
+
+        // 3. Update the Translation document
+        const transRef = doc(db, 'translations', review.translationId);
+        
+        // We need to atomically increment reviewCount and update status
+        await runTransaction(db, async (transaction) => {
+            const transDoc = await transaction.get(transRef);
+            if (!transDoc.exists()) throw "Translation not found";
+            
+            const data = transDoc.data() as Translation;
+            const currentCount = data.reviewCount || 0;
+
+            const updates: any = {
+                reviewCount: currentCount + 1,
+                lastReviewedAt: review.createdAt,
+                lastReviewerId: review.reviewerId,
+                // Also update legacy fields for backward compatibility if needed
+                reviewedBy: review.reviewerId,
+                reviewedAt: review.createdAt
+            };
+
+            if (newStatus) {
+                updates.status = newStatus;
+            }
+            
+            if (review.action === 'edited' && review.newText) {
+                updates.text = review.newText;
+            }
+
+            // Optional: Append to legacy history array if we want to keep it synced
+            // This is redundant if we query 'translationReviews' collection, but good for simple history modal
+            const historyEntry: TranslationHistoryEntry = {
+                timestamp: review.createdAt,
+                action: review.action === 'edited' ? 'edited' : review.action === 'approved' ? 'approved' : 'rejected',
+                userId: review.reviewerId,
+                userName: review.reviewerName,
+                details: {
+                    oldText: review.previousText,
+                    newText: review.newText,
+                    reason: review.comment
+                }
+            };
+            updates.history = [...(data.history || []), historyEntry];
+
+            transaction.update(transRef, updates);
+        });
+
+    } catch (error) {
+        console.error("Failed to add review:", error);
+        throw error;
+    }
+  },
+
+  applyMinorFix: async (translationId: string, newText: string, reviewer: User): Promise<void> => {
+      try {
+          const transRef = doc(db, 'translations', translationId);
+          const snap = await getDoc(transRef);
+          if (!snap.exists()) throw "Translation not found";
+          const oldText = snap.data().text;
+
+          const review: TranslationReview = {
+              id: crypto.randomUUID(),
+              translationId,
+              reviewerId: reviewer.id,
+              reviewerName: reviewer.name,
+              action: 'edited',
+              previousText: oldText,
+              newText: newText,
+              comment: 'Minor fix applied by reviewer',
+              createdAt: Date.now()
+          };
+
+          await StorageService.addTranslationReview(review);
+      } catch (error) {
+          console.error("Failed to apply minor fix:", error);
+          throw error;
+      }
+  },
+
+  getTranslationReviews: async (translationId: string): Promise<TranslationReview[]> => {
+      try {
+          const q = query(
+              collection(db, 'translationReviews'), 
+              where('translationId', '==', translationId),
+              orderBy('createdAt', 'desc')
+          );
+          const snap = await getDocs(q);
+          return mapDocs<TranslationReview>(snap);
+      } catch (error) {
+          console.error("Failed to fetch reviews:", error);
+          return [];
+      }
+  },
+
+  // --- COMMUNITY REPORTING ---
   createReport: async (report: Report) => {
       await setDoc(doc(db, 'reports', report.id), report);
   },
@@ -274,7 +379,6 @@ export const StorageService = {
           updatedAt: now,
       };
 
-      // Ensure no undefined fields are sent to Firestore
       if (enhancedWord.notes === undefined) delete enhancedWord.notes;
       if (enhancedWord.updatedBy === undefined) delete enhancedWord.updatedBy;
       
@@ -356,7 +460,6 @@ export const StorageService = {
   calculateInitialPriority: (sentence: string): number => {
       let score = 100;
       const len = sentence.length;
-      // Simple difficulty logic
       if (len < 20) score += 20; 
       if (len > 100) score -= 10; 
       return score;
@@ -471,8 +574,6 @@ export const StorageService = {
   saveTranslation: async (translation: Translation) => {
       await setDoc(doc(db, 'translations', translation.id), translation, { merge: true });
   },
-
-  // ... (Getters for legacy compatibility are kept to avoid breaking changes) ...
   
   getSentenceCount: async (): Promise<number> => {
       const coll = collection(db, 'sentences');
