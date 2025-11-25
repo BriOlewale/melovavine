@@ -4,6 +4,7 @@ import { Button, Card, Badge, toast, Skeleton, EmptyState, Modal, Input } from '
 import { validateTranslation } from '../services/geminiService';
 import { StorageService } from '../services/storageService';
 import { TranslationHistoryModal } from './TranslationHistoryModal';
+import MinorFixModal from './MinorFixModal';
 
 interface ReviewerProps {
   sentences: Sentence[];
@@ -19,13 +20,11 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
   const [spellingSuggestions, setSpellingSuggestions] = useState<SpellingSuggestion[]>([]);
   
   const pending = translations.filter(t => t.languageCode === targetLanguage.code && (t.status === 'pending' || t.status === 'needs_attention'));
-  const [idx] = useState(0); // Removed setIdx as it was unused
+  const [idx] = useState(0); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedback, setFeedback] = useState('');
   
   const [isMinorFixOpen, setIsMinorFixOpen] = useState(false);
-  const [editedText, setEditedText] = useState('');
-  const [fixComment, setFixComment] = useState('Minor fix');
 
   const [history, setHistory] = useState<TranslationReview[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -45,9 +44,6 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
 
   useEffect(() => {
       setFeedback('');
-      if (current) {
-          setEditedText(current.text);
-      }
   }, [current]);
 
   const loadSuggestions = async () => {
@@ -111,12 +107,8 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
       }
   };
 
-  const handleMinorFixSubmit = async () => {
+  const handleMinorFixSubmit = async (editedText: string, fixComment?: string) => {
       if (!current) return;
-      if (!editedText.trim()) {
-          toast.error("Translation cannot be empty.");
-          return;
-      }
 
       setIsProcessing(true);
       try {
@@ -259,6 +251,9 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
                                 <Button variant="secondary" onClick={() => handleAction('needs_attention')} disabled={isProcessing || !canApprove} className="sm:col-span-1 text-amber-600 border-amber-200 hover:bg-amber-50">
                                     Flag
                                 </Button>
+                                <Button variant="secondary" onClick={() => setIsMinorFixOpen(true)} disabled={isProcessing || !canApprove} className="sm:col-span-1 text-blue-600 border-blue-200 hover:bg-blue-50">
+                                    Minor Fix
+                                </Button>
                                 <Button variant="danger" onClick={() => handleAction('rejected')} disabled={isProcessing || !canApprove} className="sm:col-span-1">
                                     Reject
                                 </Button>
@@ -320,38 +315,14 @@ export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, use
           translation={viewHistory} 
        />
 
-       <Modal isOpen={isMinorFixOpen} onClose={() => setIsMinorFixOpen(false)} title="Apply Minor Fix">
-           <div className="space-y-4">
-               <p className="text-sm text-slate-500">Edit the translation directly. This will approve the translation with your changes.</p>
-               
-               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                   <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Original</div>
-                   <div className="text-slate-800">{current?.text}</div>
-               </div>
-
-               <div>
-                   <label className="block text-sm font-bold text-slate-700 mb-2">Corrected Text</label>
-                   <textarea 
-                       className="w-full border-2 border-slate-100 rounded-xl p-3 focus:ring-4 focus:ring-brand-500/10 focus:border-brand-400 outline-none transition-all"
-                       rows={3}
-                       value={editedText}
-                       onChange={e => setEditedText(e.target.value)}
-                   />
-               </div>
-
-               <Input 
-                   label="Reason (Optional)" 
-                   value={fixComment} 
-                   onChange={e => setFixComment(e.target.value)} 
-                   placeholder="e.g. Fixed spelling, corrected grammar..."
-               />
-
-               <div className="flex gap-3 mt-4">
-                   <Button variant="secondary" fullWidth onClick={() => setIsMinorFixOpen(false)}>Cancel</Button>
-                   <Button fullWidth onClick={handleMinorFixSubmit} disabled={isProcessing || !editedText.trim()}>Apply Fix & Approve</Button>
-               </div>
-           </div>
-       </Modal>
+       {current && (
+           <MinorFixModal 
+              isOpen={isMinorFixOpen}
+              initialText={current.text}
+              onClose={() => setIsMinorFixOpen(false)}
+              onSave={handleMinorFixSubmit}
+           />
+       )}
 
        <Modal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} title="Translation History">
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
