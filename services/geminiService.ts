@@ -1,13 +1,18 @@
+
 import { GoogleGenAI } from "@google/genai";
-import type { Language } from "../types";
+import { Language } from "../types";
 
 let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    const apiKey = process.env.API_KEY;
+    // Safe access pattern: import.meta.env && import.meta.env.KEY
+    // This supports Vite replacement while preventing undefined crashes
+    const apiKey = (import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' ? process.env?.API_KEY : undefined);
+    
     if (!apiKey) {
-      throw new Error("API_KEY environment variable is missing.");
+      console.warn("Gemini API Key missing. AI features will be disabled.");
+      throw new Error("VITE_GEMINI_API_KEY environment variable is missing.");
     }
     ai = new GoogleGenAI({ apiKey });
   }
@@ -24,11 +29,7 @@ export const getTranslationSuggestion = async (
       model: "gemini-2.5-flash",
       contents: `Translate to ${targetLanguage.name}: "${sentence}"`,
     });
-
-    // Depending on SDK version, adjust how you read text:
-    // @ts-ignore – tolerate slight SDK type differences
-    const text = typeof response.text === "function" ? response.text() : response.text;
-    return (text || "").trim();
+    return response.text?.trim() || "";
   } catch (error) {
     console.error("Gemini API Error:", error);
     return "";
@@ -48,11 +49,8 @@ export const validateTranslation = async (
       config: { responseMimeType: "application/json" },
     });
 
-    // @ts-ignore – see note above
-    const text = typeof response.text === "function" ? response.text() : response.text;
-    if (!text) {
-      return { score: 0, feedback: "No response from AI." };
-    }
+    const text = response.text;
+    if (!text) return { score: 0, feedback: "No response from AI." };
 
     return JSON.parse(text);
   } catch (error) {

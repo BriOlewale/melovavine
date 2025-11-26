@@ -4,9 +4,7 @@ import {
   collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc, getCountFromServer, where, runTransaction 
 } from 'firebase/firestore';
 // @ts-ignore
-import { 
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification
-} from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification } from 'firebase/auth';
 
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
