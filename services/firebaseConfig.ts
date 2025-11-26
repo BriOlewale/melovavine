@@ -4,17 +4,14 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Safe access pattern:
-// Assign to a variable to ensure safe runtime access while supporting Vite's injection.
-// We default to an empty object if import.meta.env is undefined to prevent crashes.
-const env = (import.meta as any).env || {};
-
-const apiKey = env.VITE_FIREBASE_API_KEY;
-const authDomain = env.VITE_FIREBASE_AUTH_DOMAIN;
-const projectId = env.VITE_FIREBASE_PROJECT_ID;
-const storageBucket = env.VITE_FIREBASE_STORAGE_BUCKET;
-const messagingSenderId = env.VITE_FIREBASE_MESSAGING_SENDER_ID;
-const appId = env.VITE_FIREBASE_APP_ID;
+// Standard Vite environment variable access
+// Ensure VITE_FIREBASE_API_KEY is set in your build environment or .env file
+const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+const messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
+const appId = import.meta.env.VITE_FIREBASE_APP_ID;
 
 const firebaseConfig = {
   apiKey,
@@ -25,9 +22,9 @@ const firebaseConfig = {
   appId,
 };
 
-// Fail fast if critical keys are missing, but only if we are actually running
+// Fail fast if critical keys are missing
 if (!apiKey) {
-  console.warn("Firebase Config: Missing VITE_FIREBASE_API_KEY. App may not function correctly.");
+  console.error("Firebase Config Error: VITE_FIREBASE_API_KEY is missing. Check your .env file or hosting configuration.");
 }
 
 const app = initializeApp(firebaseConfig);

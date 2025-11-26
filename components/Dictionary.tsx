@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Word, WordTranslation, User, WordCategory, WordCorrection, Translation } from '../types';
-import { Card, Input, Button, Modal, Badge } from './UI'; // Removed unused 'toast'
-import { StorageService } from '../services/storageService';
+import { Card, Input, Button, Modal, Badge } from './UI'; 
+import { hasPermission } from '../services/permissionService';
 import WordDetail from './WordDetail';
 
 const WORD_CATEGORIES: WordCategory[] = [
@@ -36,7 +36,8 @@ export const Dictionary: React.FC<DictionaryProps> = ({
   const [correctionType, setCorrectionType] = useState<WordCorrection['suggestionType']>('meaning');
   const [correctionValue, setCorrectionValue] = useState('');
 
-  const canManageDictionary = StorageService.hasPermission(user, 'dictionary.manage');
+  // RBAC Check
+  const canManageDictionary = hasPermission(user, 'dictionary.manage');
 
   // --- FILTERS ---
   const filteredWords = words.filter(w => {
@@ -68,8 +69,6 @@ export const Dictionary: React.FC<DictionaryProps> = ({
       setIsAddModalOpen(false);
       setNewWord({ text: '', meanings: [], categories: [] });
       setNewWordMeanings('');
-      // toast.success is handled by parent prop onAddWord if async, 
-      // but since prop is void, we rely on App.tsx to show toast.
   };
 
   const handleCorrectionSubmit = () => {

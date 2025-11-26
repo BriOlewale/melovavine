@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Announcement, ForumTopic, User, ResourceItem } from '../types';
 import { Card, Button, Input, Modal, Badge } from './UI';
-import { StorageService } from '../services/storageService';
+import { hasPermission } from '../services/permissionService';
 
 interface CommunityHubProps {
   announcements: Announcement[];
@@ -27,7 +27,8 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({ announcements, forum
   
   const [replyContent, setReplyContent] = useState('');
 
-  const canManageAnnouncements = StorageService.hasPermission(user, 'community.manage');
+  // RBAC Check
+  const canManageAnnouncements = hasPermission(user, 'community.manage');
 
   const resources: ResourceItem[] = [
       { id: '1', title: 'Translator Guidelines', description: 'Best practices for translating into PNG languages.', type: 'document', url: '#' },
@@ -56,11 +57,9 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({ announcements, forum
       if (selectedTopic && replyContent) {
           onReplyToTopic(selectedTopic.id, replyContent);
           setReplyContent('');
-          // Optimistic update for UI smoothness (actual state update comes from parent prop change, but this helps feeling responsive)
       }
   };
 
-  // If selectedTopic changes in parent (e.g. a reply was added), update the local view
   React.useEffect(() => {
       if (selectedTopic) {
           const updated = forumTopics.find(t => t.id === selectedTopic.id);

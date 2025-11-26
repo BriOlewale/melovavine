@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { Button } from './UI';
-import { StorageService } from '../services/storageService';
+import { hasPermission } from '../services/permissionService';
 
 interface HeaderProps {
   user: User | null;
@@ -12,8 +12,10 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ user, onNavigate, onSwitchRole, pendingReviewCount = 0 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const canReview = StorageService.hasPermission(user, 'translation.review');
-  const canAdmin = StorageService.hasPermission(user, 'user.read');
+  
+  // RBAC Checks
+  const canReview = hasPermission(user, 'translation.review');
+  const canAdmin = hasPermission(user, 'user.read'); // Admin panel generally requires user.read or role=admin
 
   const handleNav = (page: string) => {
       onNavigate(page);

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -12,12 +10,11 @@ import { CommunityHub } from './components/CommunityHub';
 import { Corpus } from './components/Corpus';
 import { Auth } from './components/Auth';
 import { StorageService } from './services/storageService';
+import { hasPermission } from './services/permissionService';
 import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report, WordCorrection, WordCategory } from './types';
 import { auth } from './services/firebaseConfig';
 // @ts-ignore
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from './services/firebaseConfig';
 import { ToastContainer, toast, Button, Card } from './components/UI';
 import { ReportModal } from './components/ReportModal';
 import { VerificationSuccess } from './src/pages/VerificationSuccess';
@@ -49,7 +46,6 @@ const App: React.FC = () => {
 
   // Initial Data Load & Routing Check
   useEffect(() => {
-      // Check for Firebase Auth Action Links (e.g., Verify Email)
       const params = new URLSearchParams(window.location.search);
       const mode = params.get('mode');
       const oobCode = params.get('oobCode');
@@ -84,43 +80,21 @@ const App: React.FC = () => {
           }
       };
 
-      // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
               // Reload to get fresh emailVerified status
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
               
-              const isVerified = firebaseUser.emailVerified;
+              // CRITICAL: We use StorageService.getCurrentUser() because it maps the
+              // Firebase Auth user to our internal User type with correct Permissions/Roles.
+              // This ensures consistent RBAC behavior across the entire app.
+              const appUser = await StorageService.getCurrentUser();
               
-              // We do not block login here immediately to allow "Unverified" state to render
-              // but we will restrict access in the UI logic below.
-
-              const docRef = doc(db, 'users', firebaseUser.uid);
-              const snap = await getDoc(docRef);
-              
-              if (snap.exists()) {
-                  let userData = snap.data() as User;
-                  
-                  // Auto-Fix Admin Role
-                  if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
-                      userData = { ...userData, role: 'admin', groupIds: ['g-admin'], emailVerified: true };
-                      await setDoc(docRef, userData, { merge: true });
-                  }
-                  
-                  // Sync verified status
-                  if (isVerified && !userData.emailVerified) {
-                      userData.emailVerified = true;
-                      await setDoc(docRef, { emailVerified: true, isVerified: true }, { merge: true });
-                  }
-
-                  userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
-                  
-                  // If verified, update the object
-                  userData.emailVerified = isVerified;
-                  
-                  setUser(userData);
+              if (appUser && appUser.isActive) {
+                  setUser(appUser);
                   init(); 
               } else {
+                  // User disabled or not found
                   setUser(null);
                   setIsLoading(false);
               }
@@ -162,8 +136,6 @@ const App: React.FC = () => {
       });
   };
 
-  // --- DICTIONARY HANDLERS ---
-  
   const handleAddWord = async (input: Partial<Word>) => {
       if (!user || !input.text) return;
       
@@ -241,7 +213,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- REVIEW HANDLER ---
   const handleReviewAction = async (
       translationId: string, 
       status: 'approved' | 'rejected' | 'needs_attention', 
@@ -385,8 +356,6 @@ const App: React.FC = () => {
       toast.success("Word saved to dictionary!");
   };
 
-  // --- RENDER LOGIC ---
-
   if (verificationCode) {
       return <VerificationSuccess actionCode={verificationCode} />;
   }
@@ -394,22 +363,17 @@ const App: React.FC = () => {
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div></div>;
   if (!user) return <Auth onLogin={handleLogin} />;
 
-  // --- ACCESS GATES ---
-  
-  // VERIFICATION GATE: Block access if email is not verified
+  // VERIFICATION GATE
   if (!user.emailVerified) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
               <Card className="max-w-md w-full text-center">
-                  <div className="mx-auto h-16 w-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4">
-                      📧
-                  </div>
+                  <div className="mx-auto h-16 w-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4">📧</div>
                   <h2 className="text-2xl font-bold text-slate-800 mb-2">Please Verify Your Email</h2>
                   <p className="text-slate-600 mb-6">
                       Access to the translation platform is restricted to verified accounts. 
                       Please check your inbox for the verification link.
                   </p>
-                  
                   <div className="space-y-3">
                       <Button 
                           onClick={async () => {
@@ -428,8 +392,8 @@ const App: React.FC = () => {
       );
   }
 
-  const canAccessAdmin = StorageService.hasPermission(user, 'user.read') || user.role === 'admin';
-  const canAccessReview = StorageService.hasPermission(user, 'translation.review') || user.role === 'reviewer';
+  const canAccessAdmin = hasPermission(user, 'user.read') || user.role === 'admin';
+  const canAccessReview = hasPermission(user, 'translation.review');
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-brand-200 selection:text-brand-900">
