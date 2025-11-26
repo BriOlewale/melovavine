@@ -17,92 +17,90 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
       setIsLoading(true);
 
       try {
-        // Define the timeout promise that rejects after 15s
-        const timeoutPromise = new Promise<{success: boolean, message?: string}>((_, reject) => 
-            setTimeout(() => reject(new Error("Request timed out")), 15000)
-        );
-
-        let result: any;
-
         if (view === 'login') {
-            // Race the login against the timeout
-            result = await Promise.race([
-                StorageService.login(email, password),
-                timeoutPromise
-            ]);
+            const result = await StorageService.login(email, password);
 
             if (result.success && result.user) {
                 onLogin(result.user);
-                // Note: Loading stays true as App.tsx takes over, but unmounting cleans up
+                // No need to set loading to false as component unmounts
             } else {
                 setError(result.message || 'Error logging in');
                 setIsLoading(false);
             }
         } else if (view === 'register') {
-            // Race the register against the timeout
-            result = await Promise.race([
-                StorageService.register(email, password, name),
-                timeoutPromise
-            ]);
+            const result = await StorageService.register(email, password, name);
 
             if (result.success) {
                 setView('sent');
-                setIsLoading(false);
+                setError('');
             } else {
                 setError(result.message || 'Registration failed.');
-                setIsLoading(false);
             }
+            setIsLoading(false);
         }
       } catch (err: any) {
           console.error("Auth Flow Error:", err);
-          
-          let displayMsg = "An unexpected error occurred.";
-          if (err.message === "Request timed out") {
-             displayMsg = "System is busy (Database Quota Exceeded). Please try again tomorrow.";
-          } else if (err.message) {
-             displayMsg = err.message;
-          }
-          
-          setError(displayMsg);
+          setError("An unexpected error occurred. Please try again.");
           setIsLoading(false);
       }
   };
 
   if (view === 'sent') {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 animate-fade-in">
             <Card className="w-full max-w-md text-center">
-                <div className="mx-auto h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-2xl mb-4">✉️</div>
-                <h2 className="text-2xl font-bold mb-2 text-slate-800">Check your Inbox</h2>
+                <div className="mx-auto h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl mb-4">✉️</div>
+                <h2 className="text-2xl font-bold mb-2 text-slate-800">Verification Sent</h2>
                 <p className="text-slate-600 mb-6">
-                    We have sent a verification email to <strong>{email}</strong>. 
-                    Please click the link in that email to activate your account before signing in.
+                    We've sent an email to <strong>{email}</strong>.
+                    <br/><br/>
+                    Please check your inbox (and spam folder) and click the verification link. You must verify your email before logging in.
                 </p>
-                <Button onClick={() => setView('login')} variant="secondary" className="mt-4">Back to Login</Button>
+                <Button onClick={() => setView('login')} variant="secondary" className="mt-4 w-full">Back to Login</Button>
             </Card>
         </div>
       );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-       <Card className="w-full max-w-md">
-          <div className="text-center mb-6">
-            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-black text-lg shadow-lg shadow-brand-500/25 mx-auto mb-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 animate-fade-in">
+       <Card className="w-full max-w-md shadow-2xl shadow-brand-500/10 border-0">
+          <div className="text-center mb-8">
+            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-brand-500/30 mx-auto mb-4 transform hover:scale-105 transition-transform">
                 VV
             </div>
-            <h2 className="mt-2 text-2xl font-bold text-slate-800">{view === 'login' ? 'Sign In' : 'Sign Up'}</h2>
+            <h2 className="mt-2 text-2xl font-bold text-slate-800 tracking-tight">{view === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
+            <p className="text-slate-500 text-sm mt-1">{view === 'login' ? 'Sign in to continue translating' : 'Join our translation community'}</p>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
-             {view === 'register' && <Input label="Name" value={name} onChange={e => setName(e.target.value)} required />}
-             <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
-             <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-             {error && <p className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
-             <Button type="submit" className="w-full" isLoading={isLoading}>{view === 'login' ? 'Login' : 'Register'}</Button>
+          
+          <form onSubmit={handleSubmit} className="space-y-5">
+             {view === 'register' && (
+                <div className="animate-slide-up">
+                    <Input label="Display Name" value={name} onChange={e => setName(e.target.value)} required placeholder="e.g. John Doe" />
+                </div>
+             )}
+             <Input label="Email Address" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com" />
+             <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" minLength={6} />
+             
+             {error && (
+                <div className="text-red-600 text-sm bg-red-50 p-4 rounded-xl border border-red-100 flex items-start gap-2 animate-slide-up">
+                    <span className="mt-0.5">⚠️</span>
+                    <span>{error}</span>
+                </div>
+             )}
+             
+             <Button type="submit" className="w-full h-12 text-base shadow-brand-500/20" isLoading={isLoading}>
+                {view === 'login' ? 'Sign In' : 'Create Account'}
+             </Button>
           </form>
-          <div className="mt-6 text-center pt-4 border-t border-slate-100">
-             <button onClick={() => { setView(view === 'login' ? 'register' : 'login'); setError(''); }} className="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors">
-                {view === 'login' ? 'Need an account? Sign Up' : 'Have an account? Sign In'}
+
+          <div className="mt-8 text-center pt-6 border-t border-slate-100">
+             <p className="text-slate-500 text-sm mb-2">{view === 'login' ? "Don't have an account?" : "Already have an account?"}</p>
+             <button 
+                onClick={() => { setView(view === 'login' ? 'register' : 'login'); setError(''); }} 
+                className="text-sm font-bold text-brand-600 hover:text-brand-700 transition-colors hover:underline"
+             >
+                {view === 'login' ? 'Sign Up Now' : 'Sign In Here'}
              </button>
           </div>
        </Card>

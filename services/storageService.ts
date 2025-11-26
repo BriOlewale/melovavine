@@ -1,10 +1,17 @@
+
 import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry, Report, WordCorrection, TranslationReview } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
   collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc, getCountFromServer, where, runTransaction 
 } from 'firebase/firestore';
 // @ts-ignore
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification } from 'firebase/auth';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  sendEmailVerification,
+  User as FirebaseUser
+} from 'firebase/auth';
 
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
@@ -26,28 +33,51 @@ const mapDocs = <T>(snapshot: any): T[] => snapshot.docs.map((d: any) => ({ ...d
 const LOCK_DURATION_MS = 10 * 60 * 1000; 
 const TARGET_REDUNDANCY = 2; 
 
+// Helper to map Firebase errors to user-friendly messages
+const mapAuthError = (code: string): string => {
+    switch (code) {
+        case 'auth/email-already-in-use': return 'That email is already registered.';
+        case 'auth/invalid-email': return 'Please enter a valid email address.';
+        case 'auth/user-not-found': return 'No account found with this email.';
+        case 'auth/wrong-password': return 'Incorrect password.';
+        case 'auth/weak-password': return 'Password should be at least 6 characters.';
+        case 'auth/too-many-requests': return 'Too many attempts. Please try again later.';
+        case 'auth/network-request-failed': return 'Network error. Check your connection.';
+        case 'resource-exhausted': return 'System busy (Quota Exceeded). Try again later.';
+        default: return 'An unexpected error occurred. Please try again.';
+    }
+};
+
 export const StorageService = {
   // --- AUTHENTICATION & USER MANAGEMENT ---
 
   login: async (email: string, password: string) => {
       try {
           const userCred = await signInWithEmailAndPassword(auth, email, password);
-          await userCred.user.reload();
+          const firebaseUser = userCred.user;
+          
+          // Force refresh the user token to get the latest emailVerified status
+          await firebaseUser.reload();
 
+          // Strict Email Verification Check
+          // Exception: The hardcoded admin email (owner) can bypass if needed, 
+          // but logically they should also be verified.
           const isAdminEmail = email.toLowerCase() === 'brime.olewale@gmail.com';
-          if (!isAdminEmail && !userCred.user.emailVerified) {
+          
+          if (!firebaseUser.emailVerified && !isAdminEmail) {
               await signOut(auth);
-              return { success: false, message: 'Please verify your email before signing in.' };
+              return { success: false, message: 'Your email is not verified. Please check your inbox and click the verification link.' };
           }
 
-          const userDocRef = doc(db, 'users', userCred.user.uid);
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDocSnap = await getDoc(userDocRef);
 
           let userData: User;
 
           if (isAdminEmail) {
+              // Auto-create or update Admin/Owner profile
               userData = {
-                  id: userCred.user.uid,
+                  id: firebaseUser.uid,
                   name: 'Brime Olewale',
                   email: email,
                   role: 'admin',
@@ -60,16 +90,18 @@ export const StorageService = {
           } else if (userDocSnap.exists()) {
               userData = userDocSnap.data() as User;
           } else {
+              // Edge case: Auth exists but Firestore doc missing
               await signOut(auth);
-              return { success: false, message: 'User profile missing. Please contact support.' };
+              return { success: false, message: 'User profile not found. Please contact support.' };
           }
 
           if (userData.isActive === false) {
               await signOut(auth);
-              return { success: false, message: 'Account deactivated by admin.' };
+              return { success: false, message: 'This account has been deactivated by an administrator.' };
           }
 
-          if (userCred.user.emailVerified && userData.isVerified !== true) {
+          // Sync local verification status to Firestore if changed
+          if (firebaseUser.emailVerified && userData.isVerified !== true) {
                await updateDoc(userDocRef, { isVerified: true });
                userData.isVerified = true;
           }
@@ -78,35 +110,39 @@ export const StorageService = {
 
           return { success: true, user: userData };
       } catch (e: any) {
-          let msg = 'Login failed';
-          if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
-              msg = 'Invalid email or password.';
-          }
-          return { success: false, message: msg };
+          console.error("Login Error:", e);
+          return { success: false, message: mapAuthError(e.code) };
       }
   },
 
   register: async (email: string, password: string, name: string) => {
       try {
+          // 1. Create Auth User
           const userCred = await createUserWithEmailAndPassword(auth, email, password);
+          const user = userCred.user;
+
+          // 2. Send Verification Email immediately
+          await sendEmailVerification(user);
+
+          // 3. Create Firestore Document
           const newUser: User = {
-              id: userCred.user.uid,
+              id: user.uid,
               name,
               email,
               role: 'translator',
               isActive: true,
-              isVerified: false, 
+              isVerified: false, // Explicitly false
               groupIds: ['g-trans']
           };
           await setDoc(doc(db, 'users', newUser.id), newUser);
-          try { await sendEmailVerification(userCred.user); } catch (emailError) { console.error("Failed to send verification email:", emailError); }
-          await signOut(auth); 
+
+          // 4. Force Sign Out (Firebase auto-logs in after creation)
+          await signOut(auth);
+
           return { success: true }; 
       } catch (e: any) {
-          let msg = 'Registration failed';
-          if (e.code === 'auth/email-already-in-use') msg = 'Email already registered.';
-          if (e.code === 'resource-exhausted') msg = 'System busy (Quota Exceeded). Please try again later.';
-          return { success: false, message: msg };
+          console.error("Registration Error:", e);
+          return { success: false, message: mapAuthError(e.code) };
       }
   },
 
@@ -243,19 +279,15 @@ export const StorageService = {
 
   addTranslationReview: async (review: TranslationReview): Promise<void> => {
     try {
-        // 1. Save the review record
         await setDoc(doc(db, 'translationReviews', review.id), review);
 
-        // 2. Determine new status for the translation
         let newStatus: Translation['status'] | undefined;
         if (review.action === 'approved') newStatus = 'approved';
         else if (review.action === 'rejected') newStatus = 'rejected';
-        else if (review.action === 'edited') newStatus = 'approved'; // Minor fix usually implies approval
+        else if (review.action === 'edited') newStatus = 'approved';
 
-        // 3. Update the Translation document
         const transRef = doc(db, 'translations', review.translationId);
         
-        // We need to atomically increment reviewCount and update status
         await runTransaction(db, async (transaction) => {
             const transDoc = await transaction.get(transRef);
             if (!transDoc.exists()) throw "Translation not found";
@@ -267,7 +299,6 @@ export const StorageService = {
                 reviewCount: currentCount + 1,
                 lastReviewedAt: review.createdAt,
                 lastReviewerId: review.reviewerId,
-                // Also update legacy fields for backward compatibility if needed
                 reviewedBy: review.reviewerId,
                 reviewedAt: review.createdAt
             };
@@ -280,8 +311,6 @@ export const StorageService = {
                 updates.text = review.newText;
             }
 
-            // Optional: Append to legacy history array if we want to keep it synced
-            // This is redundant if we query 'translationReviews' collection, but good for simple history modal
             const historyEntry: TranslationHistoryEntry = {
                 timestamp: review.createdAt,
                 action: review.action === 'edited' ? 'edited' : review.action === 'approved' ? 'approved' : 'rejected',

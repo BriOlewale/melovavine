@@ -6,9 +6,9 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    // Safe access pattern: import.meta.env && import.meta.env.KEY
-    // This supports Vite replacement while preventing undefined crashes
-    const apiKey = (import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' ? process.env?.API_KEY : undefined);
+    // Safe access pattern: Default to empty object if import.meta.env is undefined
+    const env = import.meta.env || {};
+    const apiKey = env.VITE_GEMINI_API_KEY;
     
     if (!apiKey) {
       console.warn("Gemini API Key missing. AI features will be disabled.");
