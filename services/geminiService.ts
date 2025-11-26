@@ -1,23 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { Language } from '../types';
-import { StorageService } from './storageService';
 
-const getAIClient = async () => {
-    const settings = await StorageService.getSystemSettings();
-    // Prioritize the key from Admin Settings. 
-    // We avoid accessing process.env directly to prevent browser crashes.
-    const key = settings.geminiApiKey || '';
-    
-    if (!key) {
-      console.warn("Gemini API Key is missing. Please add it in Admin Panel > Settings.");
-    }
-
-    return new GoogleGenAI({ apiKey: key });
-};
+// Initialize the client exactly as required by guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getTranslationSuggestion = async (sentence: string, targetLanguage: Language): Promise<string> => {
   try {
-    const ai = await getAIClient();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Translate to ${targetLanguage.name}: "${sentence}"`,
@@ -31,15 +19,18 @@ export const getTranslationSuggestion = async (sentence: string, targetLanguage:
 
 export const validateTranslation = async (original: string, translation: string, language: Language): Promise<{ score: number; feedback: string }> => {
     try {
-        const ai = await getAIClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: `Rate translation 1-10 and feedback. English: "${original}". ${language.name}: "${translation}". Return JSON { "score": number, "feedback": string }`,
             config: { responseMimeType: "application/json" }
         });
-        return JSON.parse(response.text || '{}');
+        
+        const text = response.text;
+        if (!text) return { score: 0, feedback: "No response from AI." };
+        
+        return JSON.parse(text);
     } catch (error) {
         console.error("Gemini Validation Error:", error);
-        return { score: 0, feedback: "AI Service Unavailable. Please check your API Key in Settings." };
+        return { score: 0, feedback: "AI Service Unavailable." };
     }
 }

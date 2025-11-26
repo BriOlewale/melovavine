@@ -393,11 +393,7 @@ export const AdminPanel: React.FC<{ onImportSentences: Function }> = ({ onImport
           {tab === 'settings' && (
               <div className="max-w-xl space-y-6">
                  <h2 className="text-2xl font-bold">System Settings</h2>
-                 <Card>
-                     <h3 className="text-lg font-medium mb-4">Artificial Intelligence</h3>
-                     <Input label="Google Gemini API Key" type="password" value={settings.geminiApiKey || ''} onChange={e => setSettings({...settings, geminiApiKey: e.target.value})} />
-                     <p className="text-xs text-gray-500 mt-2">Required for translation suggestions and quality scoring.</p>
-                 </Card>
+                 {/* Gemini API Key input removed to comply with security guidelines */}
                  <Card>
                      <h3 className="text-lg font-medium mb-4">General</h3>
                      <label className="flex items-center space-x-2">

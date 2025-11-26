@@ -1,3 +1,4 @@
+
 export interface Sentence {
   id: number;
   english: string;
@@ -270,7 +271,6 @@ export interface ResourceItem {
 }
 
 export interface SystemSettings {
-  geminiApiKey?: string;
   showDemoBanner: boolean;
   maintenanceMode: boolean;
 }
