@@ -1,61 +1,62 @@
 import { GoogleGenAI } from "@google/genai";
-import { Language } from '../types';
+import type { Language } from "../types";
 
-<<<<<<< HEAD
 let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
-    if (!ai) {
-        const apiKey = process.env.API_KEY;
-        if (!apiKey) {
-             throw new Error("API_KEY environment variable is missing.");
-        }
-        ai = new GoogleGenAI({ apiKey });
+  if (!ai) {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error("API_KEY environment variable is missing.");
     }
-    return ai;
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
 };
 
-export const getTranslationSuggestion = async (sentence: string, targetLanguage: Language): Promise<string> => {
+export const getTranslationSuggestion = async (
+  sentence: string,
+  targetLanguage: Language
+): Promise<string> => {
   try {
     const client = getAiClient();
     const response = await client.models.generateContent({
-=======
-// Initialize the client exactly as required by guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-export const getTranslationSuggestion = async (sentence: string, targetLanguage: Language): Promise<string> => {
-  try {
-    const response = await ai.models.generateContent({
->>>>>>> 01c24343e06c169ac71d020b48168f69bb69f3a9
-      model: 'gemini-2.5-flash',
+      model: "gemini-2.5-flash",
       contents: `Translate to ${targetLanguage.name}: "${sentence}"`,
     });
-    return response.text?.trim() || '';
+
+    // Depending on SDK version, adjust how you read text:
+    // @ts-ignore – tolerate slight SDK type differences
+    const text = typeof response.text === "function" ? response.text() : response.text;
+    return (text || "").trim();
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return '';
+    return "";
   }
 };
 
-export const validateTranslation = async (original: string, translation: string, language: Language): Promise<{ score: number; feedback: string }> => {
-    try {
-<<<<<<< HEAD
-        const client = getAiClient();
-        const response = await client.models.generateContent({
-=======
-        const response = await ai.models.generateContent({
->>>>>>> 01c24343e06c169ac71d020b48168f69bb69f3a9
-            model: 'gemini-2.5-flash',
-            contents: `Rate translation 1-10 and feedback. English: "${original}". ${language.name}: "${translation}". Return JSON { "score": number, "feedback": string }`,
-            config: { responseMimeType: "application/json" }
-        });
-        
-        const text = response.text;
-        if (!text) return { score: 0, feedback: "No response from AI." };
-        
-        return JSON.parse(text);
-    } catch (error) {
-        console.error("Gemini Validation Error:", error);
-        return { score: 0, feedback: "AI Service Unavailable." };
+export const validateTranslation = async (
+  original: string,
+  translation: string,
+  language: Language
+): Promise<{ score: number; feedback: string }> => {
+  try {
+    const client = getAiClient();
+    const response = await client.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Rate translation 1-10 and feedback. English: "${original}". ${language.name}: "${translation}". Return JSON { "score": number, "feedback": string }`,
+      config: { responseMimeType: "application/json" },
+    });
+
+    // @ts-ignore – see note above
+    const text = typeof response.text === "function" ? response.text() : response.text;
+    if (!text) {
+      return { score: 0, feedback: "No response from AI." };
     }
-}
+
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Gemini Validation Error:", error);
+    return { score: 0, feedback: "AI Service Unavailable." };
+  }
+};
