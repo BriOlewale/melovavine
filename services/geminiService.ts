@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { Language } from '../types';
 
+<<<<<<< HEAD
 let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
@@ -18,6 +19,14 @@ export const getTranslationSuggestion = async (sentence: string, targetLanguage:
   try {
     const client = getAiClient();
     const response = await client.models.generateContent({
+=======
+// Initialize the client exactly as required by guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+export const getTranslationSuggestion = async (sentence: string, targetLanguage: Language): Promise<string> => {
+  try {
+    const response = await ai.models.generateContent({
+>>>>>>> 01c24343e06c169ac71d020b48168f69bb69f3a9
       model: 'gemini-2.5-flash',
       contents: `Translate to ${targetLanguage.name}: "${sentence}"`,
     });
@@ -30,8 +39,12 @@ export const getTranslationSuggestion = async (sentence: string, targetLanguage:
 
 export const validateTranslation = async (original: string, translation: string, language: Language): Promise<{ score: number; feedback: string }> => {
     try {
+<<<<<<< HEAD
         const client = getAiClient();
         const response = await client.models.generateContent({
+=======
+        const response = await ai.models.generateContent({
+>>>>>>> 01c24343e06c169ac71d020b48168f69bb69f3a9
             model: 'gemini-2.5-flash',
             contents: `Rate translation 1-10 and feedback. English: "${original}". ${language.name}: "${translation}". Return JSON { "score": number, "feedback": string }`,
             config: { responseMimeType: "application/json" }
