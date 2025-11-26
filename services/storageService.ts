@@ -1,4 +1,5 @@
 
+
 import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry, Report, WordCorrection, TranslationReview } from '../types';
 import { db, auth } from './firebaseConfig';
 import { 
@@ -10,6 +11,7 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   sendEmailVerification,
+  applyActionCode,
   User as FirebaseUser
 } from 'firebase/auth';
 
@@ -43,6 +45,8 @@ const mapAuthError = (code: string): string => {
         case 'auth/weak-password': return 'Password should be at least 6 characters.';
         case 'auth/too-many-requests': return 'Too many attempts. Please try again later.';
         case 'auth/network-request-failed': return 'Network error. Check your connection.';
+        case 'auth/expired-action-code': return 'This verification link has expired.';
+        case 'auth/invalid-action-code': return 'Invalid verification link.';
         case 'resource-exhausted': return 'System busy (Quota Exceeded). Try again later.';
         default: return 'An unexpected error occurred. Please try again.';
     }
@@ -56,26 +60,31 @@ export const StorageService = {
           const userCred = await signInWithEmailAndPassword(auth, email, password);
           const firebaseUser = userCred.user;
           
-          // Force refresh the user token to get the latest emailVerified status
+          // Force refresh to get latest verified status
           await firebaseUser.reload();
 
-          // Strict Email Verification Check
-          // Exception: The hardcoded admin email (owner) can bypass if needed, 
-          // but logically they should also be verified.
           const isAdminEmail = email.toLowerCase() === 'brime.olewale@gmail.com';
-          
-          if (!firebaseUser.emailVerified && !isAdminEmail) {
-              await signOut(auth);
-              return { success: false, message: 'Your email is not verified. Please check your inbox and click the verification link.' };
+          const isVerified = firebaseUser.emailVerified || isAdminEmail;
+
+          // If not verified, return specific failure BUT do not sign out.
+          // This allows the Auth component to call 'resendVerificationEmail' using the active session.
+          // App.tsx will be responsible for gating access if emailVerified is false.
+          if (!isVerified) {
+              return { 
+                  success: false, 
+                  requiresVerification: true,
+                  message: 'Your email is not verified. Please check your inbox.' 
+              };
           }
 
+          // Fetch or Create User Profile
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDocSnap = await getDoc(userDocRef);
 
           let userData: User;
 
           if (isAdminEmail) {
-              // Auto-create or update Admin/Owner profile
+              // Admin/Owner Bypass & Auto-Fix
               userData = {
                   id: firebaseUser.uid,
                   name: 'Brime Olewale',
@@ -83,14 +92,20 @@ export const StorageService = {
                   role: 'admin',
                   isActive: true,
                   isVerified: true, 
+                  emailVerified: true,
                   groupIds: ['g-admin'],
                   effectivePermissions: ['*'] 
               };
               await setDoc(userDocRef, userData, { merge: true });
           } else if (userDocSnap.exists()) {
               userData = userDocSnap.data() as User;
+              // Sync emailVerified status to Firestore if it changed
+              if (userData.emailVerified !== true) {
+                  await updateDoc(userDocRef, { emailVerified: true, isVerified: true });
+                  userData.emailVerified = true;
+                  userData.isVerified = true;
+              }
           } else {
-              // Edge case: Auth exists but Firestore doc missing
               await signOut(auth);
               return { success: false, message: 'User profile not found. Please contact support.' };
           }
@@ -98,12 +113,6 @@ export const StorageService = {
           if (userData.isActive === false) {
               await signOut(auth);
               return { success: false, message: 'This account has been deactivated by an administrator.' };
-          }
-
-          // Sync local verification status to Firestore if changed
-          if (firebaseUser.emailVerified && userData.isVerified !== true) {
-               await updateDoc(userDocRef, { isVerified: true });
-               userData.isVerified = true;
           }
 
           userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
@@ -129,19 +138,42 @@ export const StorageService = {
               id: user.uid,
               name,
               email,
-              role: 'translator',
+              role: 'translator', // Default role
               isActive: true,
-              isVerified: false, // Explicitly false
+              isVerified: false, 
+              emailVerified: false, // Explicitly false
               groupIds: ['g-trans']
           };
           await setDoc(doc(db, 'users', newUser.id), newUser);
 
-          // 4. Force Sign Out (Firebase auto-logs in after creation)
+          // 4. Sign Out to force login after verification
           await signOut(auth);
 
           return { success: true }; 
       } catch (e: any) {
           console.error("Registration Error:", e);
+          return { success: false, message: mapAuthError(e.code) };
+      }
+  },
+
+  resendVerificationEmail: async () => {
+      try {
+          if (auth.currentUser) {
+              await sendEmailVerification(auth.currentUser);
+              return { success: true };
+          }
+          return { success: false, message: "No user session found." };
+      } catch (e: any) {
+          return { success: false, message: mapAuthError(e.code) };
+      }
+  },
+
+  verifyEmailWithCode: async (oobCode: string) => {
+      try {
+          await applyActionCode(auth, oobCode);
+          return { success: true };
+      } catch (e: any) {
+          console.error("Verification Code Error:", e);
           return { success: false, message: mapAuthError(e.code) };
       }
   },
@@ -702,7 +734,8 @@ export const StorageService = {
           name: u.displayName || 'User',
           email: u.email || '',
           role: 'guest', 
-          isActive: true
+          isActive: true,
+          emailVerified: u.emailVerified
       };
   },
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),

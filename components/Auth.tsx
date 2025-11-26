@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+
+
+import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
-import { Button, Card, Input } from './UI';
+import { Button, Card, Input, toast } from './UI';
 import { User } from '../types';
 
 export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
@@ -10,10 +12,23 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // State for unverified users
+  const [requiresVerification, setRequiresVerification] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+
+  useEffect(() => {
+    // Check if redirect came from successful verification
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === 'true') {
+        toast.success("🎉 Your email is verified! Please log in.");
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setError('');
+      setRequiresVerification(false);
       setIsLoading(true);
 
       try {
@@ -22,9 +37,12 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
 
             if (result.success && result.user) {
                 onLogin(result.user);
-                // No need to set loading to false as component unmounts
             } else {
                 setError(result.message || 'Error logging in');
+                // If the error specifically indicates unverified email
+                if (result.requiresVerification) {
+                    setRequiresVerification(true);
+                }
                 setIsLoading(false);
             }
         } else if (view === 'register') {
@@ -43,6 +61,17 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           setError("An unexpected error occurred. Please try again.");
           setIsLoading(false);
       }
+  };
+
+  const handleResendVerification = async () => {
+      setIsResending(true);
+      const res = await StorageService.resendVerificationEmail();
+      if (res.success) {
+          toast.success("Verification email sent! Check your inbox.");
+      } else {
+          toast.error(res.message || "Failed to resend email.");
+      }
+      setIsResending(false);
   };
 
   if (view === 'sent') {
@@ -83,9 +112,24 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
              <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" minLength={6} />
              
              {error && (
-                <div className="text-red-600 text-sm bg-red-50 p-4 rounded-xl border border-red-100 flex items-start gap-2 animate-slide-up">
-                    <span className="mt-0.5">⚠️</span>
-                    <span>{error}</span>
+                <div className="bg-red-50 p-4 rounded-xl border border-red-100 animate-slide-up">
+                    <div className="flex items-start gap-2 text-red-600 text-sm mb-2">
+                        <span className="mt-0.5">⚠️</span>
+                        <span>{error}</span>
+                    </div>
+                    {requiresVerification && (
+                        <Button 
+                            type="button" 
+                            variant="secondary" 
+                            size="sm" 
+                            fullWidth 
+                            onClick={handleResendVerification}
+                            isLoading={isResending}
+                            className="bg-white border-red-200 text-red-700 hover:bg-red-50"
+                        >
+                            Resend Verification Email
+                        </Button>
+                    )}
                 </div>
              )}
              
@@ -97,7 +141,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           <div className="mt-8 text-center pt-6 border-t border-slate-100">
              <p className="text-slate-500 text-sm mb-2">{view === 'login' ? "Don't have an account?" : "Already have an account?"}</p>
              <button 
-                onClick={() => { setView(view === 'login' ? 'register' : 'login'); setError(''); }} 
+                onClick={() => { setView(view === 'login' ? 'register' : 'login'); setError(''); setRequiresVerification(false); }} 
                 className="text-sm font-bold text-brand-600 hover:text-brand-700 transition-colors hover:underline"
              >
                 {view === 'login' ? 'Sign Up Now' : 'Sign In Here'}

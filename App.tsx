@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -16,14 +18,18 @@ import { auth } from './services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './services/firebaseConfig';
-import { ToastContainer, toast } from './components/UI';
+import { ToastContainer, toast, Button, Card } from './components/UI';
 import { ReportModal } from './components/ReportModal';
+import { VerificationSuccess } from './src/pages/VerificationSuccess';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showDemoBanner, setShowDemoBanner] = useState(false); 
+  
+  // Verification State
+  const [verificationCode, setVerificationCode] = useState<string | null>(null);
 
   // Data State
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -41,8 +47,19 @@ const App: React.FC = () => {
 
   const targetLanguage = PNG_LANGUAGES[0];
 
-  // Initial Data Load
+  // Initial Data Load & Routing Check
   useEffect(() => {
+      // Check for Firebase Auth Action Links (e.g., Verify Email)
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      const oobCode = params.get('oobCode');
+
+      if (mode === 'verifyEmail' && oobCode) {
+          setVerificationCode(oobCode);
+          setIsLoading(false);
+          return;
+      }
+
       const init = async () => {
           try {
             const [s, t, w, wt, u, a, f, set, count] = await Promise.all([
@@ -70,15 +87,13 @@ const App: React.FC = () => {
       // Auth Listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
+              // Reload to get fresh emailVerified status
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
-
-              if (firebaseUser.email !== 'brime.olewale@gmail.com' && !firebaseUser.emailVerified) {
-                  console.warn("Blocked unverified user from auto-login.");
-                  await StorageService.logout();
-                  setUser(null);
-                  setIsLoading(false);
-                  return;
-              }
+              
+              const isVerified = firebaseUser.emailVerified;
+              
+              // We do not block login here immediately to allow "Unverified" state to render
+              // but we will restrict access in the UI logic below.
 
               const docRef = doc(db, 'users', firebaseUser.uid);
               const snap = await getDoc(docRef);
@@ -86,12 +101,23 @@ const App: React.FC = () => {
               if (snap.exists()) {
                   let userData = snap.data() as User;
                   
+                  // Auto-Fix Admin Role
                   if (firebaseUser.email === 'brime.olewale@gmail.com' && userData.role !== 'admin') {
-                      userData = { ...userData, role: 'admin', groupIds: ['g-admin'] };
+                      userData = { ...userData, role: 'admin', groupIds: ['g-admin'], emailVerified: true };
                       await setDoc(docRef, userData, { merge: true });
+                  }
+                  
+                  // Sync verified status
+                  if (isVerified && !userData.emailVerified) {
+                      userData.emailVerified = true;
+                      await setDoc(docRef, { emailVerified: true, isVerified: true }, { merge: true });
                   }
 
                   userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
+                  
+                  // If verified, update the object
+                  userData.emailVerified = isVerified;
+                  
                   setUser(userData);
                   init(); 
               } else {
@@ -141,7 +167,6 @@ const App: React.FC = () => {
   const handleAddWord = async (input: Partial<Word>) => {
       if (!user || !input.text) return;
       
-      // SANITIZE INPUT: Ensure no undefined fields are passed to Firestore
       const newWord: Word = {
         id: input.id || crypto.randomUUID(),
         language: targetLanguage.code,
@@ -149,7 +174,7 @@ const App: React.FC = () => {
         normalizedText: input.normalizedText || input.text.toLowerCase().trim(),
         meanings: input.meanings || [],
         categories: (input.categories || []) as WordCategory[],
-        notes: input.notes || undefined, // FIX: Use undefined instead of null for optional string field
+        notes: input.notes || undefined, 
         frequency: input.frequency || 0,
         createdAt: input.createdAt || Date.now(),
         updatedAt: Date.now(),
@@ -224,7 +249,6 @@ const App: React.FC = () => {
   ) => {
       const translation = translations.find(t => t.id === translationId);
       if (!translation || !user) {
-          console.error("Review action failed: Translation or User not found");
           return;
       }
 
@@ -322,11 +346,8 @@ const App: React.FC = () => {
   const handleLogin = (loggedInUser: User) => { setUser(loggedInUser); };
   const handleLogout = () => { StorageService.logout(); setUser(null); setCurrentPage('dashboard'); };
 
-  // Wrapper for old signature compatibility inside Translator component
   const handleSaveWordTranslationLegacy = async (_wt: string, wordText: string, translation: string, notes: string, sentenceId: number) => {
       if (!user) return;
-      
-      // 1. CHECK IF WORD EXISTS, CREATE IF NOT
       const normalizedText = wordText.toLowerCase().trim();
       let word = words.find(w => w.normalizedText === normalizedText);
       let wordId = word?.id;
@@ -349,7 +370,6 @@ const App: React.FC = () => {
           setWords(prev => [...prev, newWord]);
       }
 
-      // 2. SAVE TRANSLATION LINK
       const newWT: WordTranslation = { 
           id: crypto.randomUUID(), 
           wordId: wordId!, 
@@ -365,8 +385,48 @@ const App: React.FC = () => {
       toast.success("Word saved to dictionary!");
   };
 
+  // --- RENDER LOGIC ---
+
+  if (verificationCode) {
+      return <VerificationSuccess actionCode={verificationCode} />;
+  }
+
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div></div>;
   if (!user) return <Auth onLogin={handleLogin} />;
+
+  // --- ACCESS GATES ---
+  
+  // VERIFICATION GATE: Block access if email is not verified
+  if (!user.emailVerified) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+              <Card className="max-w-md w-full text-center">
+                  <div className="mx-auto h-16 w-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4">
+                      📧
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Please Verify Your Email</h2>
+                  <p className="text-slate-600 mb-6">
+                      Access to the translation platform is restricted to verified accounts. 
+                      Please check your inbox for the verification link.
+                  </p>
+                  
+                  <div className="space-y-3">
+                      <Button 
+                          onClick={async () => {
+                              const res = await StorageService.resendVerificationEmail();
+                              if(res.success) toast.success("Email sent!");
+                              else toast.error(res.message || "Error sending email");
+                          }} 
+                          fullWidth 
+                      >
+                          Resend Verification Email
+                      </Button>
+                      <Button onClick={handleLogout} variant="ghost" fullWidth>Sign Out</Button>
+                  </div>
+              </Card>
+          </div>
+      );
+  }
 
   const canAccessAdmin = StorageService.hasPermission(user, 'user.read') || user.role === 'admin';
   const canAccessReview = StorageService.hasPermission(user, 'translation.review') || user.role === 'reviewer';

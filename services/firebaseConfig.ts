@@ -1,4 +1,3 @@
-
 import { initializeApp } from "firebase/app";
 // @ts-ignore
 import { getAuth } from "firebase/auth";
@@ -7,7 +6,7 @@ import { getFirestore } from "firebase/firestore";
 // Safe access pattern:
 // Assign to a variable to ensure safe runtime access while supporting Vite's injection.
 // We default to an empty object if import.meta.env is undefined to prevent crashes.
-const env = import.meta.env || {};
+const env = (import.meta as any).env || {};
 
 const apiKey = env.VITE_FIREBASE_API_KEY;
 const authDomain = env.VITE_FIREBASE_AUTH_DOMAIN;

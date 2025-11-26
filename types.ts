@@ -1,4 +1,5 @@
 
+
 export interface Sentence {
   id: number;
   english: string;
@@ -198,6 +199,7 @@ export interface User {
   email: string;
   isActive?: boolean;
   isVerified?: boolean; 
+  emailVerified: boolean; // New field for Auth status
   groupIds?: string[];
   effectivePermissions?: Permission[];
   translatedSentenceIds?: number[]; 
