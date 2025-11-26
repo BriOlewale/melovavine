@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button } from '../components/UI';
-import { StorageService } from '../services/storageService';
+import { Card, Button } from '../../components/UI';
+import { StorageService } from '../../services/storageService';
 
 export const VerificationSuccess: React.FC<{ actionCode: string | null }> = ({ actionCode }) => {
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
