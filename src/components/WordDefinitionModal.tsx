@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Modal, Button, Input } from './UI';
-import { WordTranslation, Language } from '../types';
+import { Modal, Button, Input } from '@/components/UI';
+import { WordTranslation, Language } from '@/types';
 
 export const WordDefinitionModal: React.FC<{ isOpen: boolean, onClose: () => void, selectedWord: string, normalizedWord: string, existingTranslations: WordTranslation[], targetLanguage: Language, onSave: (t: string, n: string) => void }> = ({ isOpen, onClose, selectedWord, existingTranslations, targetLanguage, onSave }) => {
+  // ... rest of the component (no logic changes)
   const [text, setText] = useState('');
   const [notes, setNotes] = useState('');
   

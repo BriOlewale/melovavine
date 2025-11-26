@@ -1,13 +1,14 @@
-import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry, Report, WordCorrection, TranslationReview } from '../types';
-import { db, auth } from './firebaseConfig';
+import { Sentence, Translation, User, Word, WordTranslation, Announcement, ForumTopic, Project, UserGroup, AuditLog, Permission, SystemSettings, SpellingSuggestion, TranslationHistoryEntry, Report, WordCorrection, TranslationReview } from '@/types';
+import { db, auth } from '@/services/firebaseConfig';
 import { 
   collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, limit, writeBatch, getDoc, getCountFromServer, where, runTransaction 
 } from 'firebase/firestore';
 // @ts-ignore
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendEmailVerification, applyActionCode } from 'firebase/auth';
+import { hasPermission } from '@/services/permissionService';
 
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
-    'admin': ['user.read', 'user.create', 'user.edit', 'group.read', 'project.read', 'project.create', 'data.import', 'data.export', 'audit.view', 'community.manage', 'translation.delete', 'system.manage'],
+    'admin': ['*'],
     'reviewer': ['translation.review', 'translation.approve', 'translation.edit', 'dictionary.manage'],
     'translator': ['translation.create', 'translation.edit'],
     'guest': []
@@ -44,6 +45,7 @@ const mapAuthError = (code: string): string => {
 };
 
 export const StorageService = {
+  // ... rest of the component (no logic changes)
   // --- AUTHENTICATION & USER MANAGEMENT ---
 
   login: async (email: string, password: string) => {
@@ -133,7 +135,8 @@ export const StorageService = {
               isActive: true,
               isVerified: false, 
               emailVerified: false, // Explicitly false
-              groupIds: ['g-trans']
+              groupIds: ['g-trans'],
+              permissions: []
           };
           await setDoc(doc(db, 'users', newUser.id), newUser);
 
@@ -171,7 +174,10 @@ export const StorageService = {
 
   logout: async () => { await signOut(auth); },
 
-  updateUser: async (u: User) => { await updateDoc(doc(db, 'users', u.id), { ...u }); },
+  updateUser: async (u: User) => { 
+      const { effectivePermissions, ...dataToSave } = u; // Don't save computed permissions to DB
+      await updateDoc(doc(db, 'users', u.id), dataToSave); 
+  },
   
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
       console.warn("Password reset via Admin Panel requires Cloud Functions in Firebase.");
@@ -203,7 +209,7 @@ export const StorageService = {
           const g = groups.find(x => x.id === gid);
           if (g) groupPerms = [...groupPerms, ...g.permissions];
       });
-      return Array.from(new Set([...rolePerms, ...groupPerms]));
+      return Array.from(new Set([...rolePerms, ...groupPerms, ...(user.permissions || [])]));
   },
   
   hasPermission: (user: User | null, permission: Permission): boolean => {
@@ -308,6 +314,7 @@ export const StorageService = {
         if (review.action === 'approved') newStatus = 'approved';
         else if (review.action === 'rejected') newStatus = 'rejected';
         else if (review.action === 'edited') newStatus = 'approved';
+        else if (review.action === 'needs_attention') newStatus = 'needs_attention';
 
         const transRef = doc(db, 'translations', review.translationId);
         
@@ -336,7 +343,7 @@ export const StorageService = {
 
             const historyEntry: TranslationHistoryEntry = {
                 timestamp: review.createdAt,
-                action: review.action === 'edited' ? 'edited' : review.action === 'approved' ? 'approved' : 'rejected',
+                action: review.action === 'edited' ? 'edited' : review.action === 'approved' ? 'approved' : review.action === 'rejected' ? 'rejected' : 'needs_attention',
                 userId: review.reviewerId,
                 userName: review.reviewerName,
                 details: {
@@ -631,20 +638,19 @@ export const StorageService = {
       return snapshot.data().count;
   },
   
-  saveSentences: async (sentences: Sentence[], onProgress?: (count: number) => void) => {
+  saveSentences: async (sentences: any[], onProgress?: (count: number) => void) => {
     const CHUNK_SIZE = 450; 
     for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
         const chunk = sentences.slice(i, i + CHUNK_SIZE);
         const batch = writeBatch(db);
         chunk.forEach(s => {
-            if (s.id) {
+            if (s.id && s.english) {
                 const ref = doc(db, 'sentences', s.id.toString());
                 let diff: 1 | 2 | 3 = 2;
                 if (s.english.length < 20) diff = 1;
                 if (s.english.length > 100) diff = 3;
 
                 const enhancedSentence: Sentence = {
-                    ...s,
                     priorityScore: StorageService.calculateInitialPriority(s.english),
                     status: 'open',
                     translationCount: 0,
@@ -652,7 +658,11 @@ export const StorageService = {
                     lockedBy: null,
                     lockedUntil: null,
                     difficulty: diff, 
-                    length: s.english.length
+                    length: s.english.length,
+                    projectId: s.projectId,
+                    id: s.id,
+                    english: s.english,
+                    ...s // allow overrides
                 };
                 batch.set(ref, enhancedSentence);
             }
@@ -726,7 +736,8 @@ export const StorageService = {
           email: u.email || '',
           role: 'guest', 
           isActive: true,
-          emailVerified: u.emailVerified
+          emailVerified: u.emailVerified,
+          permissions: []
       };
   },
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),

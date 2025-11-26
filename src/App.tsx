@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Header } from './components/Header';
-import { Dashboard } from './components/Dashboard';
-import { Translator } from './components/Translator';
-import { Reviewer } from './components/Reviewer';
-import { AdminPanel } from './components/AdminPanel';
-import { Dictionary } from './components/Dictionary';
-import { Leaderboard } from './components/Leaderboard';
-import { CommunityHub } from './components/CommunityHub';
-import { Corpus } from './components/Corpus';
-import { Auth } from './components/Auth';
-import { StorageService } from './services/storageService';
-import { hasPermission } from './services/permissionService';
-import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report, WordCorrection, WordCategory } from './types';
-import { auth } from './services/firebaseConfig';
+import { Header } from '@/components/Header';
+import { Dashboard } from '@/components/Dashboard';
+import { Translator } from '@/components/Translator';
+import { Reviewer } from '@/components/Reviewer';
+import { AdminPanel } from '@/components/AdminPanel';
+import { Dictionary } from '@/components/Dictionary';
+import { Leaderboard } from '@/components/Leaderboard';
+import { CommunityHub } from '@/components/CommunityHub';
+import { Corpus } from '@/components/Corpus';
+import { Auth } from '@/components/Auth';
+import { StorageService } from '@/services/storageService';
+import { hasPermission } from '@/services/permissionService';
+import { Sentence, Translation, User, PNG_LANGUAGES, Word, WordTranslation, Comment, Announcement, ForumTopic, TranslationHistoryEntry, Report, WordCorrection, WordCategory } from '@/types';
+import { auth } from '@/services/firebaseConfig';
 // @ts-ignore
 import { onAuthStateChanged } from 'firebase/auth';
-import { ToastContainer, toast, Button, Card } from './components/UI';
-import { ReportModal } from './components/ReportModal';
-import { VerificationSuccess } from './src/pages/VerificationSuccess';
+import { ToastContainer, toast, Button, Card } from '@/components/UI';
+import { ReportModal } from '@/components/ReportModal';
+import { VerificationSuccess } from '@/pages/VerificationSuccess';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<string>('dashboard');

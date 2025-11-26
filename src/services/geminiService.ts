@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Language } from "../types";
+import { Language } from "@/types";
 
 let ai: GoogleGenAI | null = null;
 

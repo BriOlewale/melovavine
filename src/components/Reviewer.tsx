@@ -1,12 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
-import { Sentence, Translation, User, Language, SpellingSuggestion, TranslationReview } from '../types';
-import { Button, Card, Badge, toast, Skeleton, EmptyState } from './UI';
-import { validateTranslation } from '../services/geminiService';
-import { StorageService } from '../services/storageService';
-import MinorFixModal from './MinorFixModal';
-import ReviewHistoryDrawer from './ReviewHistoryDrawer';
-import { hasPermission } from '../services/permissionService';
+import { Sentence, Translation, User, Language, SpellingSuggestion, TranslationReview } from '@/types';
+import { Button, Card, Badge, toast, Skeleton, EmptyState } from '@/components/UI';
+import { validateTranslation } from '@/services/geminiService';
+import { StorageService } from '@/services/storageService';
+import MinorFixModal from '@/components/MinorFixModal';
+import ReviewHistoryDrawer from '@/components/ReviewHistoryDrawer';
+import { hasPermission } from '@/services/permissionService';
 
 interface ReviewerProps {
   sentences: Sentence[];
@@ -18,6 +17,7 @@ interface ReviewerProps {
 }
 
 export const Reviewer: React.FC<ReviewerProps> = ({ sentences, translations, user, targetLanguage, onReviewAction, onUpdateTranslation }) => {
+  // ... rest of the component (no logic changes)
   // --- PERMISSION GUARD ---
   if (!hasPermission(user, 'translation.review')) {
       return (

@@ -1,11 +1,10 @@
-
-
 import React, { useState, useEffect } from 'react';
-import { StorageService } from '../services/storageService';
-import { Button, Card, Input, toast } from './UI';
-import { User } from '../types';
+import { StorageService } from '@/services/storageService';
+import { Button, Card, Input, toast } from '@/components/UI';
+import { User } from '@/types';
 
 export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
+  // ... component code (no logic changes)
   const [view, setView] = useState<'login' | 'register' | 'sent'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

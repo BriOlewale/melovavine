@@ -1,13 +1,17 @@
-export type Role = 'admin' | 'reviewer' | 'contributor' | 'viewer' | 'translator' | 'guest';
+export type Role = 'admin' | 'reviewer' | 'translator' | 'guest' | 'contributor' | 'viewer';
 
 export type Permission =
   | 'user.read'
   | 'user.create'
   | 'user.edit'
-  | 'user.disable'
   | 'user.delete'
   | 'user.manage_roles'
+  | 'user.disable'
   | 'role.assign'
+  | 'group.read'
+  | 'group.create'
+  | 'group.edit'
+  | 'group.delete'
   | 'project.read'
   | 'project.create'
   | 'project.edit'
@@ -17,65 +21,51 @@ export type Permission =
   | 'translation.review'
   | 'translation.approve'
   | 'dictionary.manage'
-  | 'audit.view'
-  | 'system.manage'
-  | 'community.manage'
-  | 'group.read'
-  | 'group.create'
-  | 'group.edit'
-  | 'group.delete'
   | 'data.import'
   | 'data.export'
-  | '*'; // Added wildcard
+  | 'audit.view'
+  | 'community.manage'
+  | 'system.manage'
+  | '*';
 
 export interface User {
   id: string;
   email: string;
   name: string;
   role: Role;
-  permissions: Permission[];
-  effectivePermissions?: Permission[]; // Added effectivePermissions
-  
-  // Auth & Status
-  createdAt: number;
-  lastLoginAt?: number;
-  isDisabled: boolean;
-  isActive: boolean; // Computed helper (isActive = !isDisabled)
+  isActive: boolean;
+  isVerified?: boolean;
   emailVerified: boolean;
-  isVerified?: boolean; // Legacy alias for emailVerified
-
+  
+  // Permissions & Groups
+  permissions?: Permission[]; // Direct permissions (legacy or specific)
+  groupIds?: string[];
+  effectivePermissions?: Permission[]; // Calculated including groups
+  
   // App Data
+  createdAt?: number;
+  lastLoginAt?: number;
+  isDisabled?: boolean;
   translatedSentenceIds?: number[];
-  groupIds?: string[]; // Legacy compatibility
 }
 
-export const ROLE_BASE_PERMISSIONS: Record<Role, Permission[]> = {
-  admin: ['*'], // Simplified for admin
-  reviewer: [
-    'project.read',
-    'translation.create', 'translation.edit',
-    'translation.review', 'translation.approve',
-    'dictionary.manage', 'community.manage'
-  ],
-  contributor: [
-    'project.read',
-    'translation.create', 'translation.edit'
-  ],
-  viewer: [
-    'project.read'
-  ],
-  translator: [
-    'translation.create', 'translation.edit'
-  ],
-  guest: []
-};
+export type ReviewAction = 'approved' | 'rejected' | 'edited' | 'needs_attention';
 
-export const getDefaultPermissionsForRole = (role: Role): Permission[] =>
-  ROLE_BASE_PERMISSIONS[role] ?? [];
+export interface TranslationReview {
+  id: string;
+  translationId: string;
+  reviewerId: string;
+  reviewerName: string;
+  action: ReviewAction;
+  comment?: string;
+  previousText?: string;
+  newText?: string;
+  aiConfidence?: number;
+  createdAt: number;
+}
 
 // Re-export other types to maintain file integrity
 export interface Sentence { id: number; english: string; projectId?: string; priorityScore: number; difficulty: 1 | 2 | 3; length: number; status: 'open' | 'needs_review' | 'approved'; translationCount: number; targetTranslations: number; lockedBy?: string | null; lockedUntil?: number | null; }
-export interface TranslationReview { id: string; translationId: string; reviewerId: string; reviewerName: string; action: 'approved' | 'rejected' | 'edited' | 'needs_attention'; comment?: string; previousText?: string; newText?: string; aiConfidence?: number; createdAt: number; }
 export type TranslationHistoryAction = 'created' | 'edited' | 'approved' | 'rejected' | 'needs_attention' | 'spell_correction' | 'status_change';
 export interface TranslationHistoryEntry { timestamp: number; action: TranslationHistoryAction; userId: string; userName: string; details?: { oldText?: string; newText?: string; feedback?: string | null; reason?: string; suggestionId?: string; }; }
 export interface Comment { id: string; userId: string; userName: string; text: string; timestamp: number; }
@@ -95,4 +85,10 @@ export interface ForumReply { id: string; content: string; authorName: string; a
 export interface ForumTopic { id: string; title: string; content: string; authorName: string; authorId: string; date: number; replies: ForumReply[]; category: 'general' | 'help' | 'feedback'; }
 export interface ResourceItem { id: string; title: string; description: string; type: 'video' | 'document' | 'link'; url: string; }
 export interface SystemSettings { showDemoBanner: boolean; maintenanceMode: boolean; }
+export const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
+  admin: ['*'],
+  reviewer: ['translation.review', 'translation.approve'],
+  translator: ['translation.create', 'translation.edit'],
+  guest: []
+};
 export const PNG_LANGUAGES: Language[] = [{ code: 'hula', name: 'Hula' }];

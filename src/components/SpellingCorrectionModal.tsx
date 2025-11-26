@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
-import { Modal, Button, Input, toast } from './UI';
-import { StorageService } from '../services/storageService';
-import { SpellingSuggestion, Translation, User } from '../types';
+import { Modal, Button, Input, toast } from '@/components/UI';
+import { StorageService } from '@/services/storageService';
+import { SpellingSuggestion, Translation, User } from '@/types';
 
 interface SpellingCorrectionModalProps {
   isOpen: boolean;
@@ -15,6 +14,7 @@ interface SpellingCorrectionModalProps {
 export const SpellingCorrectionModal: React.FC<SpellingCorrectionModalProps> = ({ 
   isOpen, onClose, translation, user, onSuccess 
 }) => {
+  // ... rest of the component (no logic changes)
   const [suggestion, setSuggestion] = useState(translation.text);
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);

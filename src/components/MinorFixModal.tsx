@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Input, Button } from './UI';
+import { Modal, Input, Button } from '@/components/UI';
 
 interface MinorFixModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface MinorFixModalProps {
 }
 
 const MinorFixModal: React.FC<MinorFixModalProps> = ({ isOpen, initialText, onClose, onSave }) => {
+  // ... rest of the component (no logic changes)
   const [editedText, setEditedText] = useState(initialText);
   const [comment, setComment] = useState('');
 

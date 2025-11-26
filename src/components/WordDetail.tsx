@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Word, Translation } from '../types';
-import { Card, Button, Badge, Modal, Input } from './UI';
+import { Word, Translation } from '@/types';
+import { Card, Button, Badge, Modal, Input } from '@/components/UI';
 
 interface WordDetailProps {
   word: Word;
@@ -15,6 +15,7 @@ interface WordDetailProps {
 }
 
 const WordDetail: React.FC<WordDetailProps> = ({ word, exampleTranslations, onClose, onSuggestCorrection }) => {
+  // ... rest of the component (no logic changes)
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   const [correctionType, setCorrectionType] = useState<'meaning' | 'spelling' | 'category' | 'note'>('meaning');
   const [correctionValue, setCorrectionValue] = useState('');

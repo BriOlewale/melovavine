@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { User } from '../types';
-import { Button } from './UI';
-import { hasPermission } from '../services/permissionService';
+import { User } from '@/types';
+import { Button } from '@/components/UI';
+import { hasPermission } from '@/services/permissionService';
 
 interface HeaderProps {
   user: User | null;

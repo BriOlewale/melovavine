@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Button, Input } from './UI';
+import { Modal, Button, Input } from '@/components/UI';
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -8,6 +8,7 @@ interface ReportModalProps {
 }
 
 export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSubmit }) => {
+  // ... rest of the component (no logic changes)
   const [reason, setReason] = useState('');
   const [customReason, setCustomReason] = useState('');
 

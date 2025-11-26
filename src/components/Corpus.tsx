@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Sentence, Translation, User, Language } from '../types';
-import { Card, Input, Badge, Button } from './UI';
-import { SpellingCorrectionModal } from './SpellingCorrectionModal';
+import { Sentence, Translation, User, Language } from '@/types';
+import { Card, Input, Badge, Button } from '@/components/UI';
+import { SpellingCorrectionModal } from '@/components/SpellingCorrectionModal';
 
 interface CorpusProps {
   sentences: Sentence[];
@@ -15,6 +15,7 @@ interface CorpusProps {
 }
 
 export const Corpus: React.FC<CorpusProps> = ({ sentences, translations, users, targetLanguage, user, onVote, onAddComment, onFlag }) => {
+  // ... rest of the component (no logic changes)
   const [view, setView] = useState<'translations' | 'sentences'>('translations'); 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);

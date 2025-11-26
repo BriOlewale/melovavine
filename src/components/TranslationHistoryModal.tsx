@@ -1,8 +1,9 @@
 import React from 'react';
-import { Modal } from './UI';
-import { Translation } from '../types';
+import { Modal } from '@/components/UI';
+import { Translation } from '@/types';
 
 export const TranslationHistoryModal: React.FC<{ isOpen: boolean, onClose: () => void, translation?: Translation | null }> = ({ isOpen, onClose, translation }) => {
+  // ... rest of the component (no logic changes)
   if (!translation) return null;
   return (
      <Modal isOpen={isOpen} onClose={onClose} title="History">

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserGroup, Project, AuditLog, Permission, Role, SystemSettings } from '../types';
-import { Button, Card, Input, Modal, Badge } from './UI';
-import { StorageService, ALL_PERMISSIONS } from '../services/storageService';
-import { hasPermission } from '../services/permissionService';
+import { User, UserGroup, Project, AuditLog, Permission, Role, SystemSettings } from '@/types';
+import { Button, Card, Input, Modal, Badge } from '@/components/UI';
+import { StorageService, ALL_PERMISSIONS } from '@/services/storageService';
+import { hasPermission } from '@/services/permissionService';
 
 type AdminTab = 'users' | 'groups' | 'projects' | 'data' | 'logs' | 'settings';
 
@@ -11,6 +11,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onImportSentences }) => {
+  // ... rest of the component (same logic)
   // --- State: UI & Access ---
   const [tab, setTab] = useState<AdminTab>('users');
   const [isInitializing, setIsInitializing] = useState(true);

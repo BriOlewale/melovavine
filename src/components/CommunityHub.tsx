@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Announcement, ForumTopic, User, ResourceItem } from '../types';
-import { Card, Button, Input, Modal, Badge } from './UI';
-import { hasPermission } from '../services/permissionService';
+import { Announcement, ForumTopic, User, ResourceItem } from '@/types';
+import { Card, Button, Input, Modal, Badge } from '@/components/UI';
+import { hasPermission } from '@/services/permissionService';
 
 interface CommunityHubProps {
   announcements: Announcement[];
@@ -13,6 +13,7 @@ interface CommunityHubProps {
 }
 
 export const CommunityHub: React.FC<CommunityHubProps> = ({ announcements, forumTopics, onAddAnnouncement, onAddTopic, onReplyToTopic, user }) => {
+  // ... rest of the component (no logic changes)
   const [tab, setTab] = useState<'announcements' | 'forum' | 'resources'>('announcements');
   
   // State for Forum Navigation

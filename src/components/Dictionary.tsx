@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Word, WordTranslation, User, WordCategory, WordCorrection, Translation } from '../types';
-import { Card, Input, Button, Modal, Badge } from './UI'; 
-import { hasPermission } from '../services/permissionService';
-import WordDetail from './WordDetail';
+import { Word, WordTranslation, User, WordCategory, WordCorrection, Translation } from '@/types';
+import { Card, Input, Button, Modal, Badge } from '@/components/UI'; 
+import { hasPermission } from '@/services/permissionService';
+import WordDetail from '@/components/WordDetail';
 
 const WORD_CATEGORIES: WordCategory[] = [
   'family', 'people', 'food', 'ocean', 'nature', 'body', 'animals',
@@ -23,6 +23,7 @@ interface DictionaryProps {
 export const Dictionary: React.FC<DictionaryProps> = ({ 
   words, translations, user, onDeleteWord, onAddWord, onSuggestCorrection 
 }) => {
+  // ... rest of the component (no logic changes)
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Translation, User, Language } from '../types';
-import { Card } from './UI'; 
+import { Translation, User, Language } from '@/types';
+import { Card } from '@/components/UI'; 
 
 export const Leaderboard: React.FC<{ translations: Translation[], users: User[], targetLanguage: Language }> = ({ translations, users, targetLanguage }) => {
+  // ... rest of the component (no logic changes)
   const [metric, setMetric] = useState<'approved' | 'votes'>('approved');
 
   const stats = users.map(u => {

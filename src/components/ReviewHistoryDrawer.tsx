@@ -1,6 +1,6 @@
 import React from 'react';
-import { Modal, Badge, Button } from './UI';
-import { TranslationReview } from '../types';
+import { Modal, Badge, Button } from '@/components/UI';
+import { TranslationReview } from '@/types';
 
 interface ReviewHistoryDrawerProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface ReviewHistoryDrawerProps {
 }
 
 const ReviewHistoryDrawer: React.FC<ReviewHistoryDrawerProps> = ({ isOpen, onClose, reviews }) => {
+  // ... rest of the component (no logic changes)
   const getActionColor = (action: TranslationReview['action']) => {
     switch (action) {
       case 'approved': return 'green';

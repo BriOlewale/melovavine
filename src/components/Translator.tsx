@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sentence, Translation, User, Language, Word, WordTranslation } from '../types';
-import { Button, Card, toast, Skeleton, Badge } from './UI'; 
-import { getTranslationSuggestion } from '../services/geminiService';
-import { WordDefinitionModal } from './WordDefinitionModal';
-import { StorageService } from '../services/storageService';
-import { SpellingCorrectionModal } from './SpellingCorrectionModal';
+import { Sentence, Translation, User, Language, Word, WordTranslation } from '@/types';
+import { Button, Card, toast, Skeleton, Badge } from '@/components/UI'; 
+import { getTranslationSuggestion } from '@/services/geminiService';
+import { WordDefinitionModal } from '@/components/WordDefinitionModal';
+import { StorageService } from '@/services/storageService';
+import { SpellingCorrectionModal } from '@/components/SpellingCorrectionModal';
 
 interface TranslatorProps {
   sentences: Sentence[]; // Kept for type compat
@@ -22,6 +22,7 @@ interface TranslatorProps {
 }
 
 export const Translator: React.FC<TranslatorProps> = ({ translations, user, users = [], targetLanguage, onSaveTranslation, words, wordTranslations, onSaveWordTranslation, onAddComment, onVote, onFlag }) => {
+  // ... rest of the component (no logic changes)
   const [currentTask, setCurrentTask] = useState<Sentence | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState('');

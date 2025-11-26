@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Modal, Input } from './UI';
-import { Sentence, Translation, Language } from '../types';
+import { Modal, Input } from '@/components/UI';
+import { Sentence, Translation, Language } from '@/types';
 
 export const SentenceNavigator: React.FC<{ isOpen: boolean, onClose: () => void, sentences: Sentence[], translations: Translation[], targetLanguage: Language, onSelectSentence: (i: number) => void }> = ({ isOpen, onClose, sentences, onSelectSentence }) => {
+  // ... rest of the component (no logic changes)
   const [q, setQ] = useState('');
   
   // Filter based on search query
