@@ -25,10 +25,8 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showDemoBanner, setShowDemoBanner] = useState(false); 
   
-  // Verification State
   const [verificationCode, setVerificationCode] = useState<string | null>(null);
 
-  // Data State
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [totalSentenceCount, setTotalSentenceCount] = useState(0);
   const [translations, setTranslations] = useState<Translation[]>([]);
@@ -38,13 +36,11 @@ const App: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [forumTopics, setForumTopics] = useState<ForumTopic[]>([]);
   
-  // Report Modal State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<{ type: 'sentence' | 'translation', id: string | number } | null>(null);
 
   const targetLanguage = PNG_LANGUAGES[0];
 
-  // Initial Data Load & Routing Check
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const mode = params.get('mode');
@@ -82,19 +78,13 @@ const App: React.FC = () => {
 
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
           if (firebaseUser) {
-              // Reload to get fresh emailVerified status
               try { await firebaseUser.reload(); } catch (e) { /* ignore */ }
-              
-              // CRITICAL: We use StorageService.getCurrentUser() because it maps the
-              // Firebase Auth user to our internal User type with correct Permissions/Roles.
-              // This ensures consistent RBAC behavior across the entire app.
               const appUser = await StorageService.getCurrentUser();
               
               if (appUser && appUser.isActive) {
                   setUser(appUser);
                   init(); 
               } else {
-                  // User disabled or not found
                   setUser(null);
                   setIsLoading(false);
               }

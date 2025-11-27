@@ -5,7 +5,6 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    // Safe access pattern: Default to empty object if import.meta.env is undefined
     const env = (import.meta as any).env || {};
     const apiKey = env.VITE_GEMINI_API_KEY;
     

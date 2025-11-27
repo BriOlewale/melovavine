@@ -11,7 +11,6 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onImportSentences }) => {
-  // ... rest of the component (same logic)
   // --- State: UI & Access ---
   const [tab, setTab] = useState<AdminTab>('users');
   const [isInitializing, setIsInitializing] = useState(true);
