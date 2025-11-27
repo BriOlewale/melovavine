@@ -345,18 +345,17 @@ export const StorageService = {
   },
 
   // TRANSLATION REVIEWS -------------------------------------------------------
-  addTranslationReview: async (review: TranslationReview): Promise<void> => {
+    addTranslationReview: async (review: TranslationReview): Promise<void> => {
     try {
-      // Clean review object before saving (remove undefined fields)
-      const reviewToSave: any = { ...review };
-      Object.keys(reviewToSave).forEach((key) => {
-        if (reviewToSave[key] === undefined) {
-          delete reviewToSave[key];
-        }
-      });
+      // 1) Clean top-level review object (no undefineds)
+      const cleanReview: any = { ...review };
+      if (cleanReview.comment === undefined) delete cleanReview.comment;
+      if (cleanReview.previousText === undefined) delete cleanReview.previousText;
+      if (cleanReview.newText === undefined) delete cleanReview.newText;
 
-      await setDoc(doc(db, 'translationReviews', review.id), reviewToSave);
+      await setDoc(doc(db, 'translationReviews', cleanReview.id), cleanReview);
 
+      // 2) Decide new translation status based on review action
       let newStatus: Translation['status'] | undefined;
       if (review.action === 'approved') newStatus = 'approved';
       else if (review.action === 'rejected') newStatus = 'rejected';
@@ -367,7 +366,7 @@ export const StorageService = {
 
       await runTransaction(db, async (transaction) => {
         const transDoc = await transaction.get(transRef);
-        if (!transDoc.exists()) throw 'Translation not found';
+        if (!transDoc.exists()) throw "Translation not found";
         const data = transDoc.data() as Translation;
 
         const updates: any = {
@@ -375,7 +374,7 @@ export const StorageService = {
           lastReviewedAt: review.createdAt,
           lastReviewerId: review.reviewerId,
           reviewedBy: review.reviewerId,
-          reviewedAt: review.createdAt
+          reviewedAt: review.createdAt,
         };
 
         if (newStatus) updates.status = newStatus;
@@ -383,32 +382,30 @@ export const StorageService = {
           updates.text = review.newText;
         }
 
-        // Build details safely (no undefined fields)
+        // 3) Build 'details' object without undefineds
         const details: any = {};
-        if (review.previousText != null) details.oldText = review.previousText;
-        if (review.newText != null) details.newText = review.newText;
-        if (review.comment != null) details.reason = review.comment;
+        if (review.previousText !== undefined) details.oldText = review.previousText;
+        if (review.newText !== undefined) details.newText = review.newText;
+        if (review.comment !== undefined) details.reason = review.comment;
 
-        const historyEntry: any = {
+        const historyEntry: TranslationHistoryEntry = {
           timestamp: review.createdAt,
           action: review.action === 'edited' ? 'edited' : review.action,
           userId: review.reviewerId,
-          userName: review.reviewerName
+          userName: review.reviewerName,
+          ...(Object.keys(details).length ? { details } : {}),
         };
-
-        if (Object.keys(details).length > 0) {
-          historyEntry.details = details;
-        }
 
         updates.history = [...(data.history || []), historyEntry];
 
         transaction.update(transRef, updates);
       });
     } catch (error) {
-      console.error('Failed to add review:', error);
+      console.error("Failed to add review:", error);
       throw error;
     }
   },
+
 
   applyMinorFix: async (translationId: string, newText: string, reviewer: User): Promise<void> => {
     try {
