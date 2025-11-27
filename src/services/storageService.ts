@@ -78,7 +78,8 @@ export const StorageService = {
                   isVerified: true, 
                   emailVerified: true,
                   groupIds: ['g-admin'],
-                  effectivePermissions: ['*'] 
+                  effectivePermissions: ['*'],
+                  createdAt: Date.now(), 
               };
               await setDoc(userDocRef, userData, { merge: true });
           } else if (userDocSnap.exists()) {
@@ -122,7 +123,8 @@ export const StorageService = {
               isVerified: false, 
               emailVerified: false,
               groupIds: ['g-trans'],
-              permissions: []
+              permissions: [],
+              createdAt: Date.now(),
           };
           await setDoc(doc(db, 'users', newUser.id), newUser);
           await signOut(auth);
@@ -651,7 +653,8 @@ export const StorageService = {
           role: 'guest', 
           isActive: true,
           emailVerified: u.emailVerified,
-          permissions: []
+          permissions: [],
+          createdAt: Date.now(),
       };
   },
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),

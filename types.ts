@@ -37,11 +37,11 @@ export interface User {
   effectivePermissions?: Permission[]; // Added effectivePermissions
   
   // Auth & Status
-  createdAt: number;
+  createdAt?: number;
   lastLoginAt?: number;
-  isDisabled: boolean;
-  isActive: boolean; // Computed helper (isActive = !isDisabled)
-  emailVerified: boolean;
+  isDisabled?: boolean;
+  isActive?: boolean; // Computed helper (isActive = !isDisabled)
+  emailVerified?: boolean;
   isVerified?: boolean; // Legacy alias for emailVerified
 
   // App Data

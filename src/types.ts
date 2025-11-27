@@ -30,23 +30,27 @@ export type Permission =
 
 export interface User {
   id: string;
-  email: string;
   name: string;
+  email: string;
   role: Role;
-  permissions: Permission[];
+
+  // Relationships
+  groupIds?: string[];
+
+  // Permissions
+  permissions?: Permission[];
   effectivePermissions?: Permission[];
-  
+
   // Auth & Status
   createdAt: number;
   lastLoginAt?: number;
-  isDisabled: boolean;
-  isActive: boolean;
-  emailVerified: boolean;
+  isDisabled?: boolean;
+  isActive?: boolean;
+  emailVerified?: boolean;
   isVerified?: boolean;
 
   // App Data
   translatedSentenceIds?: number[];
-  groupIds?: string[];
 }
 
 export const ROLE_BASE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -73,6 +77,7 @@ export const ROLE_BASE_PERMISSIONS: Record<Role, Permission[]> = {
 export const getDefaultPermissionsForRole = (role: Role): Permission[] =>
   ROLE_BASE_PERMISSIONS[role] ?? [];
 
+// (rest of your interfaces unchanged)
 export interface Sentence { id: number; english: string; projectId?: string; priorityScore: number; difficulty: 1 | 2 | 3; length: number; status: 'open' | 'needs_review' | 'approved'; translationCount: number; targetTranslations: number; lockedBy?: string | null; lockedUntil?: number | null; }
 export interface TranslationReview { id: string; translationId: string; reviewerId: string; reviewerName: string; action: 'approved' | 'rejected' | 'edited' | 'needs_attention'; comment?: string; previousText?: string; newText?: string; aiConfidence?: number; createdAt: number; }
 export type TranslationHistoryAction = 'created' | 'edited' | 'approved' | 'rejected' | 'needs_attention' | 'spell_correction' | 'status_change';
