@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService } from '@/services/storageService';
 import { Button, Card, Input, toast } from '@/components/UI';
-import { User } from '@/types';
+import { User, Role } from '@/types';
 
 import {
   GoogleAuthProvider,
   FacebookAuthProvider,
   signInWithPopup,
+  fetchSignInMethodsForEmail,
 } from 'firebase/auth';
 import { auth } from '@/services/firebaseConfig';
 
@@ -33,6 +34,8 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
       toast.success('🎉 Your email is verified! Please log in.');
     }
   }, []);
+
+  // ---------- Email / Password Auth Flow ----------
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,7 +85,8 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     setIsResending(false);
   };
 
-  // Generic social login handler used by Google + Facebook
+  // ---------- Social Login (Google / Facebook) ----------
+
   const socialLogin = async (
     provider: GoogleAuthProvider | FacebookAuthProvider,
     providerName: 'Google' | 'Facebook'
@@ -98,7 +102,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
         id: fbUser.uid,
         name: fbUser.displayName || `${providerName} User`,
         email: fbUser.email || '',
-        role: 'user' as any, // adjust if your Role type uses different values
+        role: 'user' as Role, // default role
 
         // Relationships
         groupIds: [],
@@ -116,10 +120,37 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
         isVerified: isVerified,
       };
 
+      console.log(`${providerName} login success`, formattedUser);
       onLogin(formattedUser);
     } catch (err: any) {
       console.error(`${providerName} login error:`, err);
-      toast.error(`${providerName} Sign-In failed. Please try again.`);
+
+      // This is the error you're seeing when the email already exists
+      if (err.code === 'auth/account-exists-with-different-credential') {
+        const email = err.customData?.email;
+
+        if (email) {
+          const methods = await fetchSignInMethodsForEmail(auth, email);
+          const first = methods[0];
+
+          const methodText =
+            first === 'google.com'
+              ? 'Google'
+              : first === 'password'
+              ? 'email and password'
+              : methods.join(', ');
+
+          toast.error(
+            `This email is already registered using ${methodText}. Please sign in with that method first.`
+          );
+        } else {
+          toast.error(
+            'This email is already registered with another login method. Please use your existing login.'
+          );
+        }
+      } else {
+        toast.error(`${providerName} Sign-In failed. Please try again.`);
+      }
     }
   };
 
@@ -127,6 +158,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   const handleFacebookLogin = () => socialLogin(facebookProvider, 'Facebook');
 
   // ---------- Verification Sent View ----------
+
   if (view === 'sent') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 animate-fade-in">
@@ -155,6 +187,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   }
 
   // ---------- Main Auth View ----------
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 animate-fade-in">
       <Card className="w-full max-w-md shadow-2xl shadow-brand-500/10 border-0">
