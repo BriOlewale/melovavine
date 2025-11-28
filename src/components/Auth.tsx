@@ -87,6 +87,8 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
         id: user.uid,
         email: user.email || '',
         name: user.displayName || 'Google User',
+        emailVerified: user.emailVerified ?? true,
+        isVerified: user.emailVerified ?? true,
         // Add/adjust any other required fields for your User type here:
         // role: 'user',
         // groupId: 'default',
