@@ -354,7 +354,7 @@ const App: React.FC = () => {
   if (!user) return <Auth onLogin={handleLogin} />;
 
   // VERIFICATION GATE
-  if (!user.emailVerified) {
+  if (!user.isVerified) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
               <Card className="max-w-md w-full text-center">

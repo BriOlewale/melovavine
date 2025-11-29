@@ -109,14 +109,13 @@ export const StorageService = {
 
       const isAdminEmail = email.toLowerCase() === 'brime.olewale@gmail.com';
       if (!isAdminEmail && !userCred.user.emailVerified) {
-  await signOut(auth);
-  return {
-    success: false,
-    message: 'Please verify your email before signing in.',
-    requiresVerification: true
-  };
-}
-
+        await signOut(auth);
+        return {
+          success: false,
+          message: 'Please verify your email before signing in.',
+          requiresVerification: true
+        };
+      }
 
       const userDocRef = doc(db, 'users', userCred.user.uid);
       const userDocSnap = await getDoc(userDocRef);
@@ -125,16 +124,16 @@ export const StorageService = {
 
       if (isAdminEmail) {
         userData = {
-  id: userCred.user.uid,
-  name: 'Brime Olewale',
-  email,
-  role: 'admin',
-  isActive: true,
-  isVerified: true,
-  groupIds: ['g-admin'],
-  effectivePermissions: ['*'],
-  createdAt: Date.now()
-};
+          id: userCred.user.uid,
+          name: 'Brime Olewale',
+          email,
+          role: 'admin',
+          isActive: true,
+          isVerified: true,
+          groupIds: ['g-admin'],
+          effectivePermissions: ['*'],
+          createdAt: Date.now()
+        };
 
         await setDoc(userDocRef, userData, { merge: true });
       } else if (userDocSnap.exists()) {
@@ -149,12 +148,16 @@ export const StorageService = {
         return { success: false, message: 'Account deactivated by admin.' };
       }
 
+      // Sync isVerified with Firebase Auth state (runs for all, including admin if emailVerified is true)
       if (userCred.user.emailVerified && userData.isVerified !== true) {
         await updateDoc(userDocRef, { isVerified: true });
         userData.isVerified = true;
       }
 
       userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
+
+      // Debug log (remove in production)
+      console.log('Post-login user:', userData, 'Firebase verified:', userCred.user.emailVerified);
 
       return { success: true, user: userData };
     } catch (e: any) {
@@ -178,15 +181,15 @@ export const StorageService = {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       const newUser: User = {
-  id: userCred.user.uid,
-  name,
-  email,
-  role: 'translator',
-  isActive: true,
-  isVerified: false,
-  groupIds: ['g-trans'],
-  createdAt: Date.now()
-};
+        id: userCred.user.uid,
+        name,
+        email,
+        role: 'translator',
+        isActive: true,
+        isVerified: false,
+        groupIds: ['g-trans'],
+        createdAt: Date.now()
+      };
 
       await setDoc(doc(db, 'users', newUser.id), newUser);
       try {
@@ -213,37 +216,42 @@ export const StorageService = {
   },
 
   resendVerificationEmail: async (): Promise<{ success: boolean; message?: string }> => {
-  const user = auth.currentUser;
+    const user = auth.currentUser;
 
-  // If no one is logged in, we can't send a verification email
-  if (!user) {
-    return { success: false, message: 'You must be logged in to resend verification email.' };
-  }
-
-  try {
-    await sendEmailVerification(user);
-    return { success: true };
-  } catch (e: any) {
-    console.error('Failed to resend verification email', e);
-    let msg = 'Failed to resend verification email.';
-    if (e.code === 'auth/too-many-requests') {
-      msg = 'Too many attempts. Please try again later.';
+    // If no one is logged in, we can't send a verification email
+    if (!user) {
+      return { success: false, message: 'You must be logged in to resend verification email.' };
     }
-    return { success: false, message: msg };
-  }
-},
 
-verifyEmailWithCode: async (
-  actionCode: string
-): Promise<{ success: boolean; message?: string }> => {
-  try {
-    await applyActionCode(auth, actionCode);
-    return { success: true };
-  } catch (e: any) {
-    console.error('Failed to verify email with code', e);
-    return { success: false, message: 'Invalid or expired verification link.' };
-  }
-},
+    const isAdminEmail = user.email?.toLowerCase() === 'brime.olewale@gmail.com';
+    if (isAdminEmail) {
+      return { success: true, message: 'Admin account auto-verified—no email needed.' };
+    }
+
+    try {
+      await sendEmailVerification(user);
+      return { success: true };
+    } catch (e: any) {
+      console.error('Failed to resend verification email', e);
+      let msg = 'Failed to resend verification email.';
+      if (e.code === 'auth/too-many-requests') {
+        msg = 'Too many attempts. Please try again later.';
+      }
+      return { success: false, message: msg };
+    }
+  },
+
+  verifyEmailWithCode: async (
+    actionCode: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      await applyActionCode(auth, actionCode);
+      return { success: true };
+    } catch (e: any) {
+      console.error('Failed to verify email with code', e);
+      return { success: false, message: 'Invalid or expired verification link.' };
+    }
+  },
 
   updateUser: async (u: User): Promise<void> => {
     await updateDoc(doc(db, 'users', u.id), { ...u });
@@ -440,22 +448,28 @@ verifyEmailWithCode: async (
         }
 
         const historyEntry: TranslationHistoryEntry = {
-          timestamp: safeReview.createdAt,
-          action:
-            safeReview.action === 'edited'
-              ? 'edited'
-              : safeReview.action === 'approved'
-              ? 'approved'
-              : 'rejected',
-          userId: safeReview.reviewerId,
-          userName: safeReview.reviewerName,
-          details: {
-            oldText: safeReview.previousText,
-            newText: safeReview.newText,
-            reason: safeReview.comment
-          }
-        };
-        updates.history = [...(data.history || []), historyEntry];
+  timestamp: safeReview.createdAt,
+  action:
+    safeReview.action === 'edited'
+      ? 'edited'
+      : safeReview.action === 'approved'
+      ? 'approved'
+      : 'rejected',
+  userId: safeReview.reviewerId,
+  userName: safeReview.reviewerName,
+  details: {
+    reason: safeReview.comment || '',  // Already safe, but explicit
+    // Fallback logic: Use current text for approve/reject; only override for edits
+    ...(safeReview.action === 'edited' ? {
+      oldText: safeReview.previousText || data.text,
+      newText: safeReview.newText || data.text
+    } : {
+      oldText: data.text,
+      newText: data.text
+    })
+  }
+};
+updates.history = [...(data.history || []), historyEntry];
 
         transaction.update(transRef, updates);
       });
@@ -882,18 +896,45 @@ verifyEmailWithCode: async (
     return mapDocs<User>(snap);
   },
 
-  getCurrentUser: (): User | null => {
-  const u = auth.currentUser;
-  if (!u) return null;
-  return {
-    id: u.uid,
-    name: u.displayName || 'User',
-    email: u.email || '',
-    role: 'guest',
-    isActive: true,
-    createdAt: Date.now()
-  };
-},
+  getCurrentUser: async (): Promise<User | null> => {
+    const u = auth.currentUser;
+    if (!u) return null;
+
+    const userDocRef = doc(db, 'users', u.uid);
+    const userDocSnap = await getDoc(userDocRef);
+
+    if (!userDocSnap.exists()) {
+      // Fallback for new/missing users (e.g., just registered)
+      await signOut(auth);
+      return null;
+    }
+
+    let userData = userDocSnap.data() as User;
+    userData.id = u.uid;  // Ensure ID sync
+    userData.email = u.email || userData.email;  // Sync from Auth
+
+    // Admin override (mirrors login logic)
+    const isAdminEmail = userData.email?.toLowerCase() === 'brime.olewale@gmail.com';
+    if (isAdminEmail) {
+      userData = {
+        ...userData,
+        isVerified: true,
+        role: 'admin',
+        groupIds: ['g-admin'],
+        effectivePermissions: ['*']
+      };
+      await setDoc(userDocRef, userData, { merge: true });  // Persist
+    }
+
+    // Sync isVerified with Firebase if possible
+    if (u.emailVerified && userData.isVerified !== true) {
+      await updateDoc(userDocRef, { isVerified: true });
+      userData.isVerified = true;
+    }
+
+    userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
+    return userData;
+  },
 
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
 

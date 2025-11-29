@@ -51,7 +51,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onImportSentences }) => 
   useEffect(() => {
     const init = async () => {
       try {
-        const user = StorageService.getCurrentUser();
+        const user = await StorageService.getCurrentUser();
         setCurrentUser(user);
       } catch (e) {
         console.error('Failed to load current user', e);
