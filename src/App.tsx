@@ -354,33 +354,45 @@ const App: React.FC = () => {
   if (!user) return <Auth onLogin={handleLogin} />;
 
   // VERIFICATION GATE
-  if (!user.isVerified) {
-      return (
-          <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-              <Card className="max-w-md w-full text-center">
-                  <div className="mx-auto h-16 w-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4">📧</div>
-                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Please Verify Your Email</h2>
-                  <p className="text-slate-600 mb-6">
-                      Access to the translation platform is restricted to verified accounts. 
-                      Please check your inbox for the verification link.
-                  </p>
-                  <div className="space-y-3">
-                      <Button 
-                          onClick={async () => {
-                              const res = await StorageService.resendVerificationEmail();
-                              if(res.success) toast.success("Email sent!");
-                              else toast.error(res.message || "Error sending email");
-                          }} 
-                          fullWidth 
-                      >
-                          Resend Verification Email
-                      </Button>
-                      <Button onClick={handleLogout} variant="ghost" fullWidth>Sign Out</Button>
-                  </div>
-              </Card>
-          </div>
-      );
-  }
+  // Treat a user as verified if either flag says so
+const isUserVerified =
+  user.isVerified === true || user.emailVerified === true;
+
+// VERIFICATION GATE (email/password users only)
+if (!isUserVerified) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <Card className="max-w-md w-full text-center">
+        <div className="mx-auto h-16 w-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4">
+          📧
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">
+          Please Verify Your Email
+        </h2>
+        <p className="text-slate-600 mb-6">
+          Access to the translation platform is restricted to verified accounts.
+          Please check your inbox for the verification link.
+        </p>
+        <div className="space-y-3">
+          <Button
+            onClick={async () => {
+              const res = await StorageService.resendVerificationEmail();
+              if (res.success) toast.success('Email sent!');
+              else toast.error(res.message || 'Error sending email');
+            }}
+            fullWidth
+          >
+            Resend Verification Email
+          </Button>
+          <Button onClick={handleLogout} variant="ghost" fullWidth>
+            Sign Out
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 
   const canAccessAdmin = hasPermission(user, 'user.read') || user.role === 'admin';
   const canAccessReview = hasPermission(user, 'translation.review');

@@ -1028,25 +1028,71 @@ export const StorageService = {
   },
 
   // USERS ---------------------------------------------------------------------
-  getAllUsers: async (): Promise<User[]> => {
-    const snap = await getDocs(collection(db, 'users'));
-    return mapDocs<User>(snap);
-  },
+  // USERS ---------------------------------------------------------------------
+getAllUsers: async (): Promise<User[]> => {
+  const snap = await getDocs(collection(db, 'users'));
+  return mapDocs<User>(snap);
+},
 
-  getCurrentUser: (): User | null => {
-    const u = auth.currentUser;
-    if (!u) return null;
-    return {
+getCurrentUser: async (): Promise<User | null> => {
+  const u = auth.currentUser;
+  if (!u) return null;
+
+  const userRef = doc(db, 'users', u.uid);
+  const snap = await getDoc(userRef);
+  const now = Date.now();
+
+  let userData: User;
+
+  if (snap.exists()) {
+    // Use existing Firestore user
+    userData = snap.data() as User;
+
+    // Ensure we sync verification flags from Firebase Auth
+    const authVerified = u.emailVerified === true;
+    if (authVerified && (!userData.emailVerified || !userData.isVerified)) {
+      userData.emailVerified = true as any;
+      (userData as any).isVerified = true;
+      await updateDoc(userRef, {
+        emailVerified: true,
+        isVerified: true,
+        lastLoginAt: now,
+      }).catch(() => {});
+    }
+  } else {
+    // First time user doc (e.g. social login)
+    const authVerified = u.emailVerified === true;
+
+    userData = {
       id: u.uid,
       name: u.displayName || 'User',
       email: u.email || '',
-      role: 'guest',
+      role: 'translator',          // sensible default
       isActive: true,
-      emailVerified: u.emailVerified,
+      isVerified: authVerified,
+      emailVerified: authVerified,
+      groupIds: ['g-trans'],
       permissions: [],
-      createdAt: Date.now(),
+      createdAt: now,
     };
-  },
+
+    await setDoc(
+      userRef,
+      {
+        ...userData,
+        lastLoginAt: now,
+      },
+      { merge: true }
+    );
+  }
+
+  // Always recompute effectivePermissions
+  userData.effectivePermissions =
+    await StorageService.calculateEffectivePermissions(userData);
+
+  return userData;
+},
+
 
   // LANGUAGE TARGET -----------------------------------------------------------
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
