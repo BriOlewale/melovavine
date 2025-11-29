@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '@/services/firebaseConfig';
 
-// Social providers
+// Social provider for Facebook only (Google login is handled via StorageService)
 const facebookProvider = new FacebookAuthProvider();
 
 export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
@@ -21,23 +21,23 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // State for unverified users (email/password flow)
+  // For email/password flow
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
-  // Loading states for social login
+  // Social login loading states
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isFacebookLoading, setIsFacebookLoading] = useState(false);
 
   useEffect(() => {
-    // Check if redirect came from successful verification
+    // If you ever redirect back with ?verified=true
     const params = new URLSearchParams(window.location.search);
     if (params.get('verified') === 'true') {
       toast.success('🎉 Your email is verified! Please log in.');
     }
   }, []);
 
-  // ---------- Email / Password Auth Flow ----------
+  // ---------------- Email / Password Auth Flow ----------------
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +86,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     setIsResending(false);
   };
 
-  // ---------- Google Login via StorageService ----------
+  // ---------------- Google Login via StorageService ----------------
 
   const handleGoogleLogin = async () => {
     try {
@@ -110,11 +110,11 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     }
   };
 
-  // ---------- Social Login (Facebook) ----------
+  // ---------------- Facebook Login (direct here) ----------------
 
-  const socialLogin = async (provider: FacebookAuthProvider, providerName: 'Facebook') => {
+  const socialLoginFacebook = async () => {
     try {
-      const result = await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, facebookProvider);
       const fbUser = result.user;
 
       const now = Date.now();
@@ -122,18 +122,12 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
 
       const formattedUser: User = {
         id: fbUser.uid,
-        name: fbUser.displayName || `${providerName} User`,
+        name: fbUser.displayName || 'Facebook User',
         email: fbUser.email || '',
-        role: 'user' as Role, // default role
-
-        // Relationships
+        role: 'user' as Role,
         groupIds: [],
-
-        // Permissions
         permissions: [],
         effectivePermissions: [],
-
-        // Auth & Status
         createdAt: now,
         lastLoginAt: now,
         isDisabled: false,
@@ -142,10 +136,10 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
         isVerified: isVerified,
       };
 
-      console.log(`${providerName} login success`, formattedUser);
+      console.log('Facebook login success', formattedUser);
       onLogin(formattedUser);
     } catch (err: any) {
-      console.error(`${providerName} login error:`, err);
+      console.error('Facebook login error:', err);
 
       if (err.code === 'auth/account-exists-with-different-credential') {
         const email = err.customData?.email;
@@ -170,7 +164,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           );
         }
       } else {
-        toast.error(`${providerName} Sign-In failed. Please try again.`);
+        toast.error('Facebook Sign-In failed. Please try again.');
       }
     }
   };
@@ -178,13 +172,13 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   const handleFacebookLogin = async () => {
     setIsFacebookLoading(true);
     try {
-      await socialLogin(facebookProvider, 'Facebook');
+      await socialLoginFacebook();
     } finally {
       setIsFacebookLoading(false);
     }
   };
 
-  // ---------- Verification Sent View ----------
+  // ---------------- "Verification Sent" Screen ----------------
 
   if (view === 'sent') {
     return (
@@ -213,11 +207,12 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     );
   }
 
-  // ---------- Main Auth View ----------
+  // ---------------- Main Auth Screen ----------------
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 animate-fade-in">
       <Card className="w-full max-w-md shadow-2xl shadow-brand-500/10 border-0">
+        {/* Header */}
         <div className="text-center mb-8">
           <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-brand-500/30 mx-auto mb-4 transform hover:scale-105 transition-transform">
             VV
@@ -232,6 +227,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           </p>
         </div>
 
+        {/* Email/password form */}
         <form onSubmit={handleSubmit} className="space-y-5">
           {view === 'register' && (
             <div className="animate-slide-up">
@@ -295,9 +291,10 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           </Button>
         </form>
 
+        {/* Social logins (only on login view) */}
         {view === 'login' && (
           <div className="mt-4 space-y-3">
-            {/* Google login button (uses StorageService) */}
+            {/* Google */}
             <button
               type="button"
               onClick={handleGoogleLogin}
@@ -314,7 +311,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
               </span>
             </button>
 
-            {/* Facebook login button (still uses direct socialLogin) */}
+            {/* Facebook */}
             <button
               type="button"
               onClick={handleFacebookLogin}
@@ -335,6 +332,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           </div>
         )}
 
+        {/* Footer toggle login/register */}
         <div className="mt-8 text-center pt-6 border-t border-slate-100">
           <p className="text-slate-500 text-sm mb-2">
             {view === 'login'

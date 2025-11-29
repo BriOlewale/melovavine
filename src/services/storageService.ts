@@ -15,7 +15,7 @@ import {
   TranslationHistoryEntry,
   Report,
   WordCorrection,
-  TranslationReview
+  TranslationReview,
 } from '@/types';
 
 import { db, auth } from '@/services/firebaseConfig';
@@ -35,97 +35,112 @@ import {
   getDoc,
   getCountFromServer,
   where,
-  runTransaction
+  runTransaction,
 } from 'firebase/firestore';
 
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
+  signOut,
   sendEmailVerification,
   applyActionCode,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  fetchSignInMethodsForEmail,
 } from 'firebase/auth';
 
 import { hasPermission } from '@/services/permissionService';
 
-// -----------------------------------------------------------------------------
-// PERMISSIONS / CONSTANTS
-// -----------------------------------------------------------------------------
-
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
   admin: ['*'],
-  reviewer: ['translation.review', 'translation.approve', 'translation.edit', 'dictionary.manage'],
+  reviewer: [
+    'translation.review',
+    'translation.approve',
+    'translation.edit',
+    'dictionary.manage',
+  ],
   translator: ['translation.create', 'translation.edit'],
-  guest: []
+  guest: [],
 };
 
 export const ALL_PERMISSIONS: Permission[] = [
-  'user.read', 'user.create', 'user.edit', 'user.delete', 'user.manage_roles',
-  'group.read', 'group.create', 'group.edit', 'group.delete',
-  'project.read', 'project.create', 'project.edit',
-  'translation.create', 'translation.edit', 'translation.review', 'translation.approve', 'translation.delete',
-  'dictionary.manage', 'data.import', 'data.export', 'audit.view', 'community.manage', 'system.manage'
+  'user.read',
+  'user.create',
+  'user.edit',
+  'user.delete',
+  'user.manage_roles',
+  'group.read',
+  'group.create',
+  'group.edit',
+  'group.delete',
+  'project.read',
+  'project.create',
+  'project.edit',
+  'translation.create',
+  'translation.edit',
+  'translation.review',
+  'translation.approve',
+  'translation.delete',
+  'dictionary.manage',
+  'data.import',
+  'data.export',
+  'audit.view',
+  'community.manage',
+  'system.manage',
 ];
-
-const LOCK_DURATION_MS = 10 * 60 * 1000;
-const TARGET_REDUNDANCY = 2;
-
-const ADMIN_EMAIL = 'brime.olewale@gmail.com';
-
-// -----------------------------------------------------------------------------
-// HELPERS
-// -----------------------------------------------------------------------------
 
 const mapDocs = <T>(snapshot: any): T[] =>
   snapshot.docs.map((d: any) => ({ ...d.data(), id: d.id }));
 
-// Map Firebase auth / API errors to user-friendly messages
+const LOCK_DURATION_MS = 10 * 60 * 1000;
+const TARGET_REDUNDANCY = 2;
+
+// Helper to map Firebase errors
 const mapAuthError = (code: string): string => {
   switch (code) {
-    case 'auth/email-already-in-use': return 'That email is already registered.';
-    case 'auth/invalid-email': return 'Please enter a valid email address.';
-    case 'auth/user-not-found': return 'No account found with this email.';
-    case 'auth/wrong-password': return 'Incorrect password.';
-    case 'auth/weak-password': return 'Password should be at least 6 characters.';
-    case 'auth/too-many-requests': return 'Too many attempts. Please try again later.';
-    case 'auth/network-request-failed': return 'Network error. Check your connection.';
-    case 'auth/expired-action-code': return 'This verification link has expired.';
-    case 'auth/invalid-action-code': return 'Invalid verification link.';
-    case 'auth/popup-closed-by-user': return 'Login popup was closed before completing sign in.';
-    case 'auth/cancelled-popup-request': return 'Login cancelled because another request was made.';
-    case 'resource-exhausted': return 'System busy (Quota Exceeded). Try again later.';
-    default: return 'An unexpected error occurred. Please try again.';
+    case 'auth/email-already-in-use':
+      return 'That email is already registered.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/user-not-found':
+      return 'No account found with this email.';
+    case 'auth/wrong-password':
+      return 'Incorrect password.';
+    case 'auth/weak-password':
+      return 'Password should be at least 6 characters.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your connection.';
+    case 'auth/expired-action-code':
+      return 'This verification link has expired.';
+    case 'auth/invalid-action-code':
+      return 'Invalid verification link.';
+    case 'resource-exhausted':
+      return 'System busy (Quota Exceeded). Try again later.';
+    default:
+      return 'An unexpected error occurred. Please try again.';
   }
 };
 
-// -----------------------------------------------------------------------------
-// STORAGE SERVICE
-// -----------------------------------------------------------------------------
-
 export const StorageService = {
   // AUTH ----------------------------------------------------------------------
-
-  /**
-   * Email/password login.
-   * - Requires email verification (except for admin override).
-   * - Ensures Firestore user profile exists (creates if missing).
-   */
   login: async (email: string, password: string) => {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCred.user;
       await firebaseUser.reload();
 
-      const isAdminEmail = email.toLowerCase() === ADMIN_EMAIL;
+      const isAdminEmail = email.toLowerCase() === 'brime.olewale@gmail.com';
+
+      // Email/password users must be verified (except admin override)
       const isVerified = firebaseUser.emailVerified || isAdminEmail;
 
       if (!isVerified) {
         return {
           success: false,
           requiresVerification: true,
-          message: 'Your email is not verified. Please check your inbox.'
+          message: 'Your email is not verified. Please check your inbox.',
         };
       }
 
@@ -134,37 +149,51 @@ export const StorageService = {
 
       let userData: User;
 
-      if (userDocSnap.exists()) {
+      if (isAdminEmail) {
+        // Ensure admin profile exists/updated
+        userData = {
+          id: firebaseUser.uid,
+          name: 'Brime Olewale',
+          email: email,
+          role: 'admin',
+          isActive: true,
+          isVerified: true,
+          emailVerified: true,
+          groupIds: ['g-admin'],
+          effectivePermissions: ['*'],
+          createdAt: Date.now(),
+        };
+        await setDoc(userDocRef, userData, { merge: true });
+      } else if (userDocSnap.exists()) {
         userData = userDocSnap.data() as User;
-        // Auto-mark verified if they just passed emailVerified check
+
+        // Sync verification flags into Firestore if not already set
         if (userData.emailVerified !== true || userData.isVerified !== true) {
           await updateDoc(userDocRef, { emailVerified: true, isVerified: true });
           userData.emailVerified = true;
           userData.isVerified = true;
         }
       } else {
-        // Create a new profile for this verified email/password user
-        userData = {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'User',
-          email,
-          role: isAdminEmail ? 'admin' : 'translator',
-          isActive: true,
-          isVerified: true,
-          emailVerified: true,
-          groupIds: isAdminEmail ? ['g-admin'] : ['g-trans'],
-          permissions: [],
-          createdAt: Date.now()
+        await signOut(auth);
+        return {
+          success: false,
+          message: 'User profile not found. Please contact support.',
         };
-        await setDoc(userDocRef, userData, { merge: true });
       }
 
       if (userData.isActive === false) {
-        await firebaseSignOut(auth);
-        return { success: false, message: 'This account has been deactivated by an administrator.' };
+        await signOut(auth);
+        return {
+          success: false,
+          message: 'This account has been deactivated by an administrator.',
+        };
       }
 
-      userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
+      userData.effectivePermissions =
+        await StorageService.calculateEffectivePermissions(userData);
+
+      // Track last login time (best-effort)
+      await updateDoc(userDocRef, { lastLoginAt: Date.now() }).catch(() => {});
 
       return { success: true, user: userData };
     } catch (e: any) {
@@ -173,15 +202,112 @@ export const StorageService = {
     }
   },
 
-  /**
-   * Register with email/password.
-   * - Creates a Firestore user with translator role.
-   * - Sends email verification.
-   * - Signs out immediately after registration.
-   */
+  // Google sign-in – always treated as verified, no verification email required
+  loginWithGoogle: async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+      const email = firebaseUser.email || '';
+
+      if (!email) {
+        return {
+          success: false,
+          message:
+            'Google account has no email associated. Please try another account.',
+        };
+      }
+
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      const now = Date.now();
+      let userData: User;
+
+      if (userDocSnap.exists()) {
+        // Existing user – update metadata
+        userData = userDocSnap.data() as User;
+        userData.email = email;
+        userData.name =
+          firebaseUser.displayName || userData.name || 'Google User';
+      } else {
+        // New Google user – default translator role
+        userData = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'Google User',
+          email,
+          role: 'translator',
+          isActive: true,
+          isVerified: true,
+          emailVerified: true,
+          groupIds: ['g-trans'],
+          permissions: [],
+          createdAt: now,
+        };
+      }
+
+      // Force verified flags for Google users
+      userData.emailVerified = true;
+      (userData as any).isVerified = true;
+
+      // Recalculate permissions
+      userData.effectivePermissions =
+        await StorageService.calculateEffectivePermissions(userData);
+
+      await setDoc(
+        userDocRef,
+        {
+          ...userData,
+          lastLoginAt: now,
+          emailVerified: true,
+          isVerified: true,
+        },
+        { merge: true }
+      );
+
+      return { success: true, user: userData };
+    } catch (e: any) {
+      console.error('Google Login Error:', e);
+
+      if (e.code === 'auth/account-exists-with-different-credential') {
+        const email = e.customData?.email;
+        if (email) {
+          const methods = await fetchSignInMethodsForEmail(auth, email);
+          const first = methods[0];
+
+          const methodText =
+            first === 'google.com'
+              ? 'Google'
+              : first === 'password'
+              ? 'email and password'
+              : methods.join(', ');
+
+          return {
+            success: false,
+            message: `This email is already registered using ${methodText}. Please sign in with that method first.`,
+          };
+        }
+
+        return {
+          success: false,
+          message:
+            'This email is already registered with another login method. Please use your existing login.',
+        };
+      }
+
+      return { success: false, message: mapAuthError(e.code) };
+    }
+  },
+
   register: async (email: string, password: string, name: string) => {
     try {
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const userCred = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
       const user = userCred.user;
       await sendEmailVerification(user);
 
@@ -195,72 +321,15 @@ export const StorageService = {
         emailVerified: false,
         groupIds: ['g-trans'],
         permissions: [],
-        createdAt: Date.now()
+        createdAt: Date.now(),
       };
 
       await setDoc(doc(db, 'users', newUser.id), newUser);
-      await firebaseSignOut(auth);
+      await signOut(auth);
 
       return { success: true };
     } catch (e: any) {
       console.error('Registration Error:', e);
-      return { success: false, message: mapAuthError(e.code) };
-    }
-  },
-
-  /**
-   * Google OAuth login.
-   * - Creates Firestore user profile if missing.
-   * - Treats ADMIN_EMAIL as admin; others as translators.
-   * - Uses Google-verified email, so no extra email verification required.
-   */
-  loginWithGoogle: async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
-
-      if (!firebaseUser.email) {
-        await firebaseSignOut(auth);
-        return { success: false, message: 'Google account has no email address.' };
-      }
-
-      const email = firebaseUser.email;
-      const isAdminEmail = email.toLowerCase() === ADMIN_EMAIL;
-
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-
-      let userData: User;
-
-      if (userDocSnap.exists()) {
-        userData = userDocSnap.data() as User;
-      } else {
-        userData = {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'User',
-          email,
-          role: isAdminEmail ? 'admin' : 'translator',
-          isActive: true,
-          isVerified: true,
-          emailVerified: true,
-          groupIds: isAdminEmail ? ['g-admin'] : ['g-trans'],
-          permissions: [],
-          createdAt: Date.now()
-        };
-        await setDoc(userDocRef, userData, { merge: true });
-      }
-
-      if (userData.isActive === false) {
-        await firebaseSignOut(auth);
-        return { success: false, message: 'This account has been deactivated by an administrator.' };
-      }
-
-      userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
-
-      return { success: true, user: userData };
-    } catch (e: any) {
-      console.error('Google Login Error:', e);
       return { success: false, message: mapAuthError(e.code) };
     }
   },
@@ -273,7 +342,6 @@ export const StorageService = {
       }
       return { success: false, message: 'No user session found.' };
     } catch (e: any) {
-      console.error('Resend Verification Error:', e);
       return { success: false, message: mapAuthError(e.code) };
     }
   },
@@ -289,19 +357,20 @@ export const StorageService = {
   },
 
   logout: async () => {
-    await firebaseSignOut(auth);
+    await signOut(auth);
   },
 
   // USERS / GROUPS / PERMISSIONS ---------------------------------------------
-
   updateUser: async (u: User) => {
-    const { effectivePermissions, ...dataToSave } = u as any;
+    const { effectivePermissions, ...dataToSave } = u;
     await updateDoc(doc(db, 'users', u.id), dataToSave);
   },
 
   adminSetUserPassword: async (_userId: string, _newPass: string) => {
     console.warn('Password reset via Admin Panel requires Cloud Functions.');
-    alert("Note: For security, Firebase does not allow admins to set user passwords directly. Users must use 'Forgot Password'.");
+    alert(
+      "Note: For security, Firebase does not allow admins to set user passwords directly. Users must use 'Forgot Password'."
+    );
   },
 
   getUserGroups: async (): Promise<UserGroup[]> => {
@@ -309,9 +378,24 @@ export const StorageService = {
     const groups = mapDocs<UserGroup>(snap);
     if (groups.length === 0) {
       return [
-        { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
-        { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
-        { id: 'g-trans', name: 'Translators', permissions: ['translation.create'], description: 'Contributors' }
+        {
+          id: 'g-admin',
+          name: 'Administrators',
+          permissions: ['*'],
+          description: 'Full Access',
+        },
+        {
+          id: 'g-review',
+          name: 'Reviewers',
+          permissions: ['translation.review', 'translation.approve'],
+          description: 'Moderators',
+        },
+        {
+          id: 'g-trans',
+          name: 'Translators',
+          permissions: ['translation.create'],
+          description: 'Contributors',
+        },
       ];
     }
     return groups;
@@ -321,7 +405,9 @@ export const StorageService = {
     await setDoc(doc(db, 'user_groups', group.id), group);
   },
 
-  calculateEffectivePermissions: async (user: User): Promise<Permission[]> => {
+  calculateEffectivePermissions: async (
+    user: User
+  ): Promise<Permission[]> => {
     const groups = await StorageService.getUserGroups();
     const rolePerms = ROLE_BASE_PERMISSIONS[user.role] || [];
     let groupPerms: Permission[] = [];
@@ -329,7 +415,9 @@ export const StorageService = {
       const g = groups.find((x) => x.id === gid);
       if (g) groupPerms = [...groupPerms, ...g.permissions];
     });
-    return Array.from(new Set([...rolePerms, ...groupPerms, ...(user.permissions || [])]));
+    return Array.from(
+      new Set([...rolePerms, ...groupPerms, ...(user.permissions || [])])
+    );
   },
 
   hasPermission: (user: User | null, permission: Permission): boolean => {
@@ -337,7 +425,6 @@ export const StorageService = {
   },
 
   // SPELLING SUGGESTIONS ------------------------------------------------------
-
   createSpellingSuggestion: async (suggestion: SpellingSuggestion) => {
     await setDoc(doc(db, 'spelling_suggestions', suggestion.id), suggestion);
   },
@@ -374,7 +461,7 @@ export const StorageService = {
         const details: any = {
           oldText: suggestion.originalText,
           newText: suggestion.suggestedText,
-          suggestionId: suggestion.id
+          suggestionId: suggestion.id,
         };
         if (suggestion.reason != null) {
           details.reason = suggestion.reason;
@@ -385,12 +472,12 @@ export const StorageService = {
           action: 'spell_correction',
           userId: resolver.id,
           userName: resolver.name,
-          details
+          details,
         };
 
         transaction.update(transRef, {
           text: suggestion.suggestedText,
-          history: [...(trans.history || []), historyEntry]
+          history: [...(trans.history || []), historyEntry],
         });
       }
 
@@ -399,13 +486,12 @@ export const StorageService = {
         resolvedAt: Date.now(),
         resolvedByUserId: resolver.id,
         resolvedByUserName: resolver.name,
-        rejectionReason: rejectionReason ?? null
+        rejectionReason: rejectionReason ?? null,
       });
     });
   },
 
   // WORD CORRECTIONS ----------------------------------------------------------
-
   submitWordCorrection: async (correction: WordCorrection) => {
     await setDoc(doc(db, 'word_corrections', correction.id), correction);
   },
@@ -429,23 +515,23 @@ export const StorageService = {
       status,
       reviewedBy: reviewer.id,
       reviewedByName: reviewer.name,
-      reviewedAt: Date.now()
+      reviewedAt: Date.now(),
     });
   },
 
   // TRANSLATION REVIEWS -------------------------------------------------------
-
   addTranslationReview: async (review: TranslationReview): Promise<void> => {
     try {
-      // Clean review object (no undefineds)
+      // 1) Clean top-level review object (no undefineds)
       const cleanReview: any = { ...review };
       if (cleanReview.comment === undefined) delete cleanReview.comment;
-      if (cleanReview.previousText === undefined) delete cleanReview.previousText;
+      if (cleanReview.previousText === undefined)
+        delete cleanReview.previousText;
       if (cleanReview.newText === undefined) delete cleanReview.newText;
 
       await setDoc(doc(db, 'translationReviews', cleanReview.id), cleanReview);
 
-      // Decide new translation status based on review action
+      // 2) Decide new translation status based on review action
       let newStatus: Translation['status'] | undefined;
       if (review.action === 'approved') newStatus = 'approved';
       else if (review.action === 'rejected') newStatus = 'rejected';
@@ -464,7 +550,7 @@ export const StorageService = {
           lastReviewedAt: review.createdAt,
           lastReviewerId: review.reviewerId,
           reviewedBy: review.reviewerId,
-          reviewedAt: review.createdAt
+          reviewedAt: review.createdAt,
         };
 
         if (newStatus) updates.status = newStatus;
@@ -472,8 +558,10 @@ export const StorageService = {
           updates.text = review.newText;
         }
 
+        // 3) Build 'details' object without undefineds
         const details: any = {};
-        if (review.previousText !== undefined) details.oldText = review.previousText;
+        if (review.previousText !== undefined)
+          details.oldText = review.previousText;
         if (review.newText !== undefined) details.newText = review.newText;
         if (review.comment !== undefined) details.reason = review.comment;
 
@@ -482,7 +570,7 @@ export const StorageService = {
           action: review.action === 'edited' ? 'edited' : review.action,
           userId: review.reviewerId,
           userName: review.reviewerName,
-          ...(Object.keys(details).length ? { details } : {})
+          ...(Object.keys(details).length ? { details } : {}),
         };
 
         updates.history = [...(data.history || []), historyEntry];
@@ -495,7 +583,11 @@ export const StorageService = {
     }
   },
 
-  applyMinorFix: async (translationId: string, newText: string, reviewer: User): Promise<void> => {
+  applyMinorFix: async (
+    translationId: string,
+    newText: string,
+    reviewer: User
+  ): Promise<void> => {
     try {
       const transRef = doc(db, 'translations', translationId);
       const snap = await getDoc(transRef);
@@ -509,9 +601,9 @@ export const StorageService = {
         reviewerName: reviewer.name,
         action: 'edited',
         previousText: oldText,
-        newText,
+        newText: newText,
         comment: 'Minor fix applied by reviewer',
-        createdAt: Date.now()
+        createdAt: Date.now(),
       };
 
       await StorageService.addTranslationReview(review);
@@ -521,7 +613,9 @@ export const StorageService = {
     }
   },
 
-  getTranslationReviews: async (translationId: string): Promise<TranslationReview[]> => {
+  getTranslationReviews: async (
+    translationId: string
+  ): Promise<TranslationReview[]> => {
     try {
       const qRef = query(
         collection(db, 'translationReviews'),
@@ -537,19 +631,20 @@ export const StorageService = {
   },
 
   // REPORTS -------------------------------------------------------------------
-
   createReport: async (report: Report) => {
     await setDoc(doc(db, 'reports', report.id), report);
   },
 
   getReports: async (): Promise<Report[]> => {
-    const qRef = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    const qRef = query(
+      collection(db, 'reports'),
+      orderBy('timestamp', 'desc')
+    );
     const snap = await getDocs(qRef);
     return mapDocs<Report>(snap);
   },
 
   // WORDS ---------------------------------------------------------------------
-
   getWords: async (): Promise<Word[]> => {
     const snap = await getDocs(collection(db, 'words'));
     return mapDocs<Word>(snap);
@@ -566,7 +661,7 @@ export const StorageService = {
       ...word,
       normalizedText: word.normalizedText || word.text.toLowerCase().trim(),
       createdAt: word.createdAt || now,
-      updatedAt: now
+      updatedAt: now,
     };
 
     if (enhancedWord.notes === undefined) delete enhancedWord.notes;
@@ -601,9 +696,13 @@ export const StorageService = {
       sSnap.docs.forEach((docSnap) => {
         const text = docSnap.data().english as string;
         if (!text) return;
-        const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+        const words = text
+          .toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .split(/\s+/);
         words.forEach((w) => {
-          if (w.length > 1) frequencyMap.set(w, (frequencyMap.get(w) || 0) + 1);
+          if (w.length > 1)
+            frequencyMap.set(w, (frequencyMap.get(w) || 0) + 1);
         });
       });
 
@@ -616,7 +715,10 @@ export const StorageService = {
         const word = wDoc.data() as Word;
         const newFreq = frequencyMap.get(word.normalizedText || '') || 0;
         if (word.frequency !== newFreq) {
-          batch.update(wDoc.ref, { frequency: newFreq, updatedAt: Date.now() });
+          batch.update(wDoc.ref, {
+            frequency: newFreq,
+            updatedAt: Date.now(),
+          });
           count++;
           if (count >= 450) {
             await batch.commit();
@@ -632,7 +734,6 @@ export const StorageService = {
   },
 
   // SENTENCES -----------------------------------------------------------------
-
   getSentences: async (): Promise<Sentence[]> => {
     const qRef = query(collection(db, 'sentences'), limit(2000));
     const snap = await getDocs(qRef);
@@ -647,11 +748,15 @@ export const StorageService = {
     return score;
   },
 
-  getSmartQueueTask: async (user: User, excludedIds: number[] = []): Promise<Sentence | null> => {
+  getSmartQueueTask: async (
+    user: User,
+    excludedIds: number[] = []
+  ): Promise<Sentence | null> => {
     try {
       const sentencesRef = collection(db, 'sentences');
       const now = Date.now();
-      const isExperienced = (user.translatedSentenceIds?.length || 0) > 200;
+      const isExperienced =
+        (user.translatedSentenceIds?.length || 0) > 200;
 
       let qPriority = query(
         sentencesRef,
@@ -663,9 +768,13 @@ export const StorageService = {
       let candidates = snap.docs.map((d) => d.data() as Sentence);
 
       if (isExperienced) {
-        candidates.sort((a, b) => (b.difficulty || 1) - (a.difficulty || 1));
+        candidates.sort(
+          (a, b) => (b.difficulty || 1) - (a.difficulty || 1)
+        );
       } else {
-        candidates.sort((a, b) => (a.difficulty || 1) - (b.difficulty || 1));
+        candidates.sort(
+          (a, b) => (a.difficulty || 1) - (b.difficulty || 1)
+        );
       }
 
       const findValid = (list: Sentence[]) => {
@@ -673,7 +782,10 @@ export const StorageService = {
         return shuffled.find((s) => {
           if (excludedIds.includes(s.id)) return false;
           const isLocked =
-            s.lockedBy && s.lockedBy !== user.id && s.lockedUntil && s.lockedUntil > now;
+            s.lockedBy &&
+            s.lockedBy !== user.id &&
+            s.lockedUntil &&
+            s.lockedUntil > now;
           if (isLocked) return false;
           if (user.translatedSentenceIds?.includes(s.id)) return false;
           return true;
@@ -682,14 +794,21 @@ export const StorageService = {
 
       let validTask = findValid(candidates);
       if (!validTask) {
-        const qFallback = query(sentencesRef, where('status', '==', 'open'), limit(100));
+        const qFallback = query(
+          sentencesRef,
+          where('status', '==', 'open'),
+          limit(100)
+        );
         snap = await getDocs(qFallback);
         candidates = snap.docs.map((d) => d.data() as Sentence);
         validTask = findValid(candidates);
       }
 
       if (!validTask) return null;
-      const success = await StorageService.lockSentence(validTask.id.toString(), user.id);
+      const success = await StorageService.lockSentence(
+        validTask.id.toString(),
+        user.id
+      );
       if (success) return validTask;
       return null;
     } catch (e) {
@@ -698,7 +817,10 @@ export const StorageService = {
     }
   },
 
-  lockSentence: async (sentenceId: string, userId: string): Promise<boolean> => {
+  lockSentence: async (
+    sentenceId: string,
+    userId: string
+  ): Promise<boolean> => {
     try {
       await runTransaction(db, async (transaction) => {
         const ref = doc(db, 'sentences', sentenceId);
@@ -714,7 +836,10 @@ export const StorageService = {
         ) {
           throw 'Locked by another user';
         }
-        transaction.update(ref, { lockedBy: userId, lockedUntil: now + LOCK_DURATION_MS });
+        transaction.update(ref, {
+          lockedBy: userId,
+          lockedUntil: now + LOCK_DURATION_MS,
+        });
       });
       return true;
     } catch (e) {
@@ -728,7 +853,10 @@ export const StorageService = {
     await updateDoc(ref, { lockedBy: null, lockedUntil: null });
   },
 
-  saveSentences: async (sentences: any[], onProgress?: (count: number) => void) => {
+  saveSentences: async (
+    sentences: any[],
+    onProgress?: (count: number) => void
+  ) => {
     const CHUNK_SIZE = 450;
     for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
       const chunk = sentences.slice(i, i + CHUNK_SIZE);
@@ -740,7 +868,9 @@ export const StorageService = {
           if (s.english.length < 20) diff = 1;
           if (s.english.length > 100) diff = 3;
           const enhancedSentence: Sentence = {
-            priorityScore: StorageService.calculateInitialPriority(s.english),
+            priorityScore: StorageService.calculateInitialPriority(
+              s.english
+            ),
             status: 'open',
             translationCount: 0,
             targetTranslations: TARGET_REDUNDANCY,
@@ -751,7 +881,7 @@ export const StorageService = {
             projectId: s.projectId,
             id: s.id,
             english: s.english,
-            ...s
+            ...s,
           };
           batch.set(ref, enhancedSentence);
         }
@@ -769,14 +899,17 @@ export const StorageService = {
   },
 
   // TRANSLATIONS --------------------------------------------------------------
-
   submitTranslation: async (translation: Translation, user: User) => {
     const batch = writeBatch(db);
     const transRef = doc(db, 'translations', translation.id);
     batch.set(transRef, translation);
 
     if (translation.status === 'pending') {
-      const sentenceRef = doc(db, 'sentences', translation.sentenceId.toString());
+      const sentenceRef = doc(
+        db,
+        'sentences',
+        translation.sentenceId.toString()
+      );
       const sSnap = await getDoc(sentenceRef);
       if (sSnap.exists()) {
         const sData = sSnap.data() as Sentence;
@@ -784,9 +917,12 @@ export const StorageService = {
         const updates: any = {
           lockedBy: null,
           lockedUntil: null,
-          translationCount: newCount
+          translationCount: newCount,
         };
-        if (newCount >= (sData.targetTranslations || TARGET_REDUNDANCY)) {
+        if (
+          newCount >=
+          (sData.targetTranslations || TARGET_REDUNDANCY)
+        ) {
           updates.status = 'needs_review';
           updates.priorityScore = 0;
         }
@@ -794,7 +930,10 @@ export const StorageService = {
       }
 
       const userRef = doc(db, 'users', user.id);
-      const newHistory = [...(user.translatedSentenceIds || []), translation.sentenceId];
+      const newHistory = [
+        ...(user.translatedSentenceIds || []),
+        translation.sentenceId,
+      ];
       const uniqueHistory = Array.from(new Set(newHistory));
       batch.update(userRef, { translatedSentenceIds: uniqueHistory });
     }
@@ -803,7 +942,9 @@ export const StorageService = {
   },
 
   saveTranslation: async (translation: Translation) => {
-    await setDoc(doc(db, 'translations', translation.id), translation, { merge: true });
+    await setDoc(doc(db, 'translations', translation.id), translation, {
+      merge: true,
+    });
   },
 
   getTranslations: async (): Promise<Translation[]> => {
@@ -816,7 +957,6 @@ export const StorageService = {
   },
 
   // PROJECTS ------------------------------------------------------------------
-
   getProjects: async (): Promise<Project[]> => {
     const snap = await getDocs(collection(db, 'projects'));
     const projects = mapDocs<Project>(snap);
@@ -827,8 +967,8 @@ export const StorageService = {
           name: 'General',
           targetLanguageCode: 'hula',
           status: 'active',
-          createdAt: Date.now()
-        }
+          createdAt: Date.now(),
+        },
       ];
     }
     return projects;
@@ -839,7 +979,6 @@ export const StorageService = {
   },
 
   // WORD TRANSLATIONS ---------------------------------------------------------
-
   getWordTranslations: async (): Promise<WordTranslation[]> => {
     const snap = await getDocs(collection(db, 'word_translations'));
     return mapDocs<WordTranslation>(snap);
@@ -850,9 +989,11 @@ export const StorageService = {
   },
 
   // ANNOUNCEMENTS / FORUM -----------------------------------------------------
-
   getAnnouncements: async (): Promise<Announcement[]> => {
-    const qRef = query(collection(db, 'announcements'), orderBy('date', 'desc'));
+    const qRef = query(
+      collection(db, 'announcements'),
+      orderBy('date', 'desc')
+    );
     const snap = await getDocs(qRef);
     return mapDocs<Announcement>(snap);
   },
@@ -862,7 +1003,10 @@ export const StorageService = {
   },
 
   getForumTopics: async (): Promise<ForumTopic[]> => {
-    const qRef = query(collection(db, 'forum_topics'), orderBy('date', 'desc'));
+    const qRef = query(
+      collection(db, 'forum_topics'),
+      orderBy('date', 'desc')
+    );
     const snap = await getDocs(qRef);
     return mapDocs<ForumTopic>(snap);
   },
@@ -872,7 +1016,6 @@ export const StorageService = {
   },
 
   // SYSTEM SETTINGS -----------------------------------------------------------
-
   getSystemSettings: async (): Promise<SystemSettings> => {
     const docRef = doc(db, 'system_settings', 'global');
     const snap = await getDoc(docRef);
@@ -884,8 +1027,7 @@ export const StorageService = {
     await setDoc(doc(db, 'system_settings', 'global'), s);
   },
 
-  // USERS LIST / CURRENT USER -------------------------------------------------
-
+  // USERS ---------------------------------------------------------------------
   getAllUsers: async (): Promise<User[]> => {
     const snap = await getDocs(collection(db, 'users'));
     return mapDocs<User>(snap);
@@ -902,23 +1044,25 @@ export const StorageService = {
       isActive: true,
       emailVerified: u.emailVerified,
       permissions: [],
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
   },
 
   // LANGUAGE TARGET -----------------------------------------------------------
-
   getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
 
   // ADMIN / UTILITIES ---------------------------------------------------------
-
   clearAll: async () => {
     console.warn('Clear All disabled in Cloud Mode for safety');
   },
 
   getAuditLogs: async (): Promise<AuditLog[]> => {
-    const qRef = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
+    const qRef = query(
+      collection(db, 'audit_logs'),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    );
     const snap = await getDocs(qRef);
     return mapDocs<AuditLog>(snap);
   },
@@ -935,7 +1079,7 @@ export const StorageService = {
       userName: user.name,
       details,
       timestamp: Date.now(),
-      category
+      category,
     });
-  }
+  },
 };
