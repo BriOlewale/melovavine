@@ -4,7 +4,6 @@ import { Button, Card, Input, toast } from '@/components/UI';
 import { User, Role } from '@/types';
 
 import {
-  GoogleAuthProvider,
   FacebookAuthProvider,
   signInWithPopup,
   fetchSignInMethodsForEmail,
@@ -12,7 +11,6 @@ import {
 import { auth } from '@/services/firebaseConfig';
 
 // Social providers
-const googleProvider = new GoogleAuthProvider();
 const facebookProvider = new FacebookAuthProvider();
 
 export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
@@ -26,6 +24,10 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   // State for unverified users (email/password flow)
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [isResending, setIsResending] = useState(false);
+
+  // Loading states for social login
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isFacebookLoading, setIsFacebookLoading] = useState(false);
 
   useEffect(() => {
     // Check if redirect came from successful verification
@@ -54,7 +56,6 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           if (result.requiresVerification) {
             setRequiresVerification(true);
           }
-          setIsLoading(false);
         }
       } else if (view === 'register') {
         const result = await StorageService.register(email, password, name);
@@ -65,11 +66,11 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
         } else {
           setError(result.message || 'Registration failed.');
         }
-        setIsLoading(false);
       }
     } catch (err: any) {
       console.error('Auth Flow Error:', err);
       setError('An unexpected error occurred. Please try again.');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -85,12 +86,33 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     setIsResending(false);
   };
 
-  // ---------- Social Login (Google / Facebook) ----------
+  // ---------- Google Login via StorageService ----------
 
-  const socialLogin = async (
-    provider: GoogleAuthProvider | FacebookAuthProvider,
-    providerName: 'Google' | 'Facebook'
-  ) => {
+  const handleGoogleLogin = async () => {
+    try {
+      setIsGoogleLoading(true);
+      setError('');
+      setRequiresVerification(false);
+
+      const result = await StorageService.loginWithGoogle();
+
+      if (!result.success || !result.user) {
+        setError(result.message || 'Could not sign in with Google.');
+        return;
+      }
+
+      onLogin(result.user);
+    } catch (err) {
+      console.error('Google login error:', err);
+      setError('Could not sign in with Google. Please try again.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  // ---------- Social Login (Facebook) ----------
+
+  const socialLogin = async (provider: FacebookAuthProvider, providerName: 'Facebook') => {
     try {
       const result = await signInWithPopup(auth, provider);
       const fbUser = result.user;
@@ -125,7 +147,6 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     } catch (err: any) {
       console.error(`${providerName} login error:`, err);
 
-      // This is the error you're seeing when the email already exists
       if (err.code === 'auth/account-exists-with-different-credential') {
         const email = err.customData?.email;
 
@@ -154,8 +175,14 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
     }
   };
 
-  const handleGoogleLogin = () => socialLogin(googleProvider, 'Google');
-  const handleFacebookLogin = () => socialLogin(facebookProvider, 'Facebook');
+  const handleFacebookLogin = async () => {
+    setIsFacebookLoading(true);
+    try {
+      await socialLogin(facebookProvider, 'Facebook');
+    } finally {
+      setIsFacebookLoading(false);
+    }
+  };
 
   // ---------- Verification Sent View ----------
 
@@ -270,10 +297,12 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
 
         {view === 'login' && (
           <div className="mt-4 space-y-3">
+            {/* Google login button (uses StorageService) */}
             <button
               type="button"
               onClick={handleGoogleLogin}
-              className="w-full h-12 flex items-center justify-center gap-3 border rounded-xl bg-white hover:bg-gray-50 transition shadow-sm"
+              disabled={isGoogleLoading || isLoading}
+              className="w-full h-12 flex items-center justify-center gap-3 border rounded-xl bg-white hover:bg-gray-50 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <img
                 src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
@@ -281,14 +310,16 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                 className="h-5 w-5"
               />
               <span className="text-sm font-semibold text-slate-700">
-                Sign in with Google
+                {isGoogleLoading ? 'Signing in…' : 'Sign in with Google'}
               </span>
             </button>
 
+            {/* Facebook login button (still uses direct socialLogin) */}
             <button
               type="button"
               onClick={handleFacebookLogin}
-              className="w-full h-12 flex items-center justify-center gap-3 border rounded-xl bg-[#1877F2] hover:bg-[#145fc0] text-white transition shadow-sm"
+              disabled={isFacebookLoading || isLoading}
+              className="w-full h-12 flex items-center justify-center gap-3 border rounded-xl bg-[#1877F2] hover:bg-[#145fc0] text-white transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -298,7 +329,7 @@ export const Auth: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
                 <path d="M22 12.07C22 6.51 17.52 2 12 2S2 6.51 2 12.07C2 17.1 5.66 21.24 10.44 22v-6.99H7.9v-2.94h2.54V9.83c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.47h-1.26c-1.24 0-1.63.78-1.63 1.57v1.89h2.78l-.44 2.94h-2.34V22C18.34 21.24 22 17.1 22 12.07z" />
               </svg>
               <span className="text-sm font-semibold">
-                Sign in with Facebook
+                {isFacebookLoading ? 'Signing in…' : 'Sign in with Facebook'}
               </span>
             </button>
           </div>

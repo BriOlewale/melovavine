@@ -16,8 +16,10 @@ import {
   Report,
   WordCorrection,
   TranslationReview
-} from '../types';
-import { db, auth } from './firebaseConfig';
+} from '@/types';
+
+import { db, auth } from '@/services/firebaseConfig';
+
 import {
   collection,
   getDocs,
@@ -35,236 +37,272 @@ import {
   where,
   runTransaction
 } from 'firebase/firestore';
-// @ts-ignore
+
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut,
+  signOut as firebaseSignOut,
   sendEmailVerification,
-  applyActionCode
+  applyActionCode,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 
+import { hasPermission } from '@/services/permissionService';
+
+// -----------------------------------------------------------------------------
+// PERMISSIONS / CONSTANTS
+// -----------------------------------------------------------------------------
+
 const ROLE_BASE_PERMISSIONS: Record<string, Permission[]> = {
-  admin: [
-    'user.read',
-    'user.create',
-    'user.edit',
-    'group.read',
-    'project.read',
-    'project.create',
-    'data.import',
-    'data.export',
-    'audit.view',
-    'community.manage',
-    'translation.delete',
-    'system.manage'
-  ],
+  admin: ['*'],
   reviewer: ['translation.review', 'translation.approve', 'translation.edit', 'dictionary.manage'],
   translator: ['translation.create', 'translation.edit'],
   guest: []
 };
 
 export const ALL_PERMISSIONS: Permission[] = [
-  'user.read',
-  'user.create',
-  'user.edit',
-  'user.delete',
-  'user.manage_roles',
-  'group.read',
-  'group.create',
-  'group.edit',
-  'group.delete',
-  'project.read',
-  'project.create',
-  'project.edit',
-  'translation.create',
-  'translation.edit',
-  'translation.review',
-  'translation.approve',
-  'translation.delete',
-  'dictionary.manage',
-  'data.import',
-  'data.export',
-  'audit.view',
-  'community.manage',
-  'system.manage'
+  'user.read', 'user.create', 'user.edit', 'user.delete', 'user.manage_roles',
+  'group.read', 'group.create', 'group.edit', 'group.delete',
+  'project.read', 'project.create', 'project.edit',
+  'translation.create', 'translation.edit', 'translation.review', 'translation.approve', 'translation.delete',
+  'dictionary.manage', 'data.import', 'data.export', 'audit.view', 'community.manage', 'system.manage'
 ];
-
-const mapDocs = <T>(snapshot: any): T[] =>
-  snapshot.docs.map((d: any) => ({ ...(d.data() as T), id: d.id }));
 
 const LOCK_DURATION_MS = 10 * 60 * 1000;
 const TARGET_REDUNDANCY = 2;
 
-export const StorageService = {
-  // --- AUTHENTICATION & USER MANAGEMENT ---
+const ADMIN_EMAIL = 'brime.olewale@gmail.com';
 
-  login: async (
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; message?: string; user?: User; requiresVerification?: boolean }> => {
+// -----------------------------------------------------------------------------
+// HELPERS
+// -----------------------------------------------------------------------------
+
+const mapDocs = <T>(snapshot: any): T[] =>
+  snapshot.docs.map((d: any) => ({ ...d.data(), id: d.id }));
+
+// Map Firebase auth / API errors to user-friendly messages
+const mapAuthError = (code: string): string => {
+  switch (code) {
+    case 'auth/email-already-in-use': return 'That email is already registered.';
+    case 'auth/invalid-email': return 'Please enter a valid email address.';
+    case 'auth/user-not-found': return 'No account found with this email.';
+    case 'auth/wrong-password': return 'Incorrect password.';
+    case 'auth/weak-password': return 'Password should be at least 6 characters.';
+    case 'auth/too-many-requests': return 'Too many attempts. Please try again later.';
+    case 'auth/network-request-failed': return 'Network error. Check your connection.';
+    case 'auth/expired-action-code': return 'This verification link has expired.';
+    case 'auth/invalid-action-code': return 'Invalid verification link.';
+    case 'auth/popup-closed-by-user': return 'Login popup was closed before completing sign in.';
+    case 'auth/cancelled-popup-request': return 'Login cancelled because another request was made.';
+    case 'resource-exhausted': return 'System busy (Quota Exceeded). Try again later.';
+    default: return 'An unexpected error occurred. Please try again.';
+  }
+};
+
+// -----------------------------------------------------------------------------
+// STORAGE SERVICE
+// -----------------------------------------------------------------------------
+
+export const StorageService = {
+  // AUTH ----------------------------------------------------------------------
+
+  /**
+   * Email/password login.
+   * - Requires email verification (except for admin override).
+   * - Ensures Firestore user profile exists (creates if missing).
+   */
+  login: async (email: string, password: string) => {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
-      await userCred.user.reload();
+      const firebaseUser = userCred.user;
+      await firebaseUser.reload();
 
-      const isAdminEmail = email.toLowerCase() === 'brime.olewale@gmail.com';
-      if (!isAdminEmail && !userCred.user.emailVerified) {
-        await signOut(auth);
+      const isAdminEmail = email.toLowerCase() === ADMIN_EMAIL;
+      const isVerified = firebaseUser.emailVerified || isAdminEmail;
+
+      if (!isVerified) {
         return {
           success: false,
-          message: 'Please verify your email before signing in.',
-          requiresVerification: true
+          requiresVerification: true,
+          message: 'Your email is not verified. Please check your inbox.'
         };
       }
 
-      const userDocRef = doc(db, 'users', userCred.user.uid);
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
       const userDocSnap = await getDoc(userDocRef);
 
       let userData: User;
 
-      if (isAdminEmail) {
+      if (userDocSnap.exists()) {
+        userData = userDocSnap.data() as User;
+        // Auto-mark verified if they just passed emailVerified check
+        if (userData.emailVerified !== true || userData.isVerified !== true) {
+          await updateDoc(userDocRef, { emailVerified: true, isVerified: true });
+          userData.emailVerified = true;
+          userData.isVerified = true;
+        }
+      } else {
+        // Create a new profile for this verified email/password user
         userData = {
-          id: userCred.user.uid,
-          name: 'Brime Olewale',
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'User',
           email,
-          role: 'admin',
+          role: isAdminEmail ? 'admin' : 'translator',
           isActive: true,
           isVerified: true,
-          groupIds: ['g-admin'],
-          effectivePermissions: ['*'],
+          emailVerified: true,
+          groupIds: isAdminEmail ? ['g-admin'] : ['g-trans'],
+          permissions: [],
           createdAt: Date.now()
         };
-
         await setDoc(userDocRef, userData, { merge: true });
-      } else if (userDocSnap.exists()) {
-        userData = userDocSnap.data() as User;
-      } else {
-        await signOut(auth);
-        return { success: false, message: 'User profile missing. Please contact support.' };
       }
 
       if (userData.isActive === false) {
-        await signOut(auth);
-        return { success: false, message: 'Account deactivated by admin.' };
-      }
-
-      // Sync isVerified with Firebase Auth state (runs for all, including admin if emailVerified is true)
-      if (userCred.user.emailVerified && userData.isVerified !== true) {
-        await updateDoc(userDocRef, { isVerified: true });
-        userData.isVerified = true;
+        await firebaseSignOut(auth);
+        return { success: false, message: 'This account has been deactivated by an administrator.' };
       }
 
       userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
 
-      // Debug log (remove in production)
-      console.log('Post-login user:', userData, 'Firebase verified:', userCred.user.emailVerified);
-
       return { success: true, user: userData };
     } catch (e: any) {
-      let msg = 'Login failed';
-      if (
-        e.code === 'auth/invalid-credential' ||
-        e.code === 'auth/user-not-found' ||
-        e.code === 'auth/wrong-password'
-      ) {
-        msg = 'Invalid email or password.';
-      }
-      return { success: false, message: msg };
+      console.error('Login Error:', e);
+      return { success: false, message: mapAuthError(e.code) };
     }
   },
 
-  register: async (
-    email: string,
-    password: string,
-    name: string
-  ): Promise<{ success: boolean; message?: string }> => {
+  /**
+   * Register with email/password.
+   * - Creates a Firestore user with translator role.
+   * - Sends email verification.
+   * - Signs out immediately after registration.
+   */
+  register: async (email: string, password: string, name: string) => {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCred.user;
+      await sendEmailVerification(user);
+
       const newUser: User = {
-        id: userCred.user.uid,
+        id: user.uid,
         name,
         email,
         role: 'translator',
         isActive: true,
         isVerified: false,
+        emailVerified: false,
         groupIds: ['g-trans'],
+        permissions: [],
         createdAt: Date.now()
       };
 
       await setDoc(doc(db, 'users', newUser.id), newUser);
-      try {
-        await sendEmailVerification(userCred.user);
-      } catch (emailError) {
-        console.error('Failed to send verification email:', emailError);
-      }
-      await signOut(auth);
+      await firebaseSignOut(auth);
+
       return { success: true };
     } catch (e: any) {
-      let msg = 'Registration failed';
-      if (e.code === 'auth/email-already-in-use') {
-        msg = 'Email already registered.';
-      }
-      if (e.code === 'resource-exhausted') {
-        msg = 'System busy (Quota Exceeded). Please try again later.';
-      }
-      return { success: false, message: msg };
+      console.error('Registration Error:', e);
+      return { success: false, message: mapAuthError(e.code) };
     }
   },
 
-  logout: async (): Promise<void> => {
-    await signOut(auth);
-  },
-
-  resendVerificationEmail: async (): Promise<{ success: boolean; message?: string }> => {
-    const user = auth.currentUser;
-
-    // If no one is logged in, we can't send a verification email
-    if (!user) {
-      return { success: false, message: 'You must be logged in to resend verification email.' };
-    }
-
-    const isAdminEmail = user.email?.toLowerCase() === 'brime.olewale@gmail.com';
-    if (isAdminEmail) {
-      return { success: true, message: 'Admin account auto-verified—no email needed.' };
-    }
-
+  /**
+   * Google OAuth login.
+   * - Creates Firestore user profile if missing.
+   * - Treats ADMIN_EMAIL as admin; others as translators.
+   * - Uses Google-verified email, so no extra email verification required.
+   */
+  loginWithGoogle: async () => {
     try {
-      await sendEmailVerification(user);
-      return { success: true };
-    } catch (e: any) {
-      console.error('Failed to resend verification email', e);
-      let msg = 'Failed to resend verification email.';
-      if (e.code === 'auth/too-many-requests') {
-        msg = 'Too many attempts. Please try again later.';
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+
+      if (!firebaseUser.email) {
+        await firebaseSignOut(auth);
+        return { success: false, message: 'Google account has no email address.' };
       }
-      return { success: false, message: msg };
+
+      const email = firebaseUser.email;
+      const isAdminEmail = email.toLowerCase() === ADMIN_EMAIL;
+
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      let userData: User;
+
+      if (userDocSnap.exists()) {
+        userData = userDocSnap.data() as User;
+      } else {
+        userData = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'User',
+          email,
+          role: isAdminEmail ? 'admin' : 'translator',
+          isActive: true,
+          isVerified: true,
+          emailVerified: true,
+          groupIds: isAdminEmail ? ['g-admin'] : ['g-trans'],
+          permissions: [],
+          createdAt: Date.now()
+        };
+        await setDoc(userDocRef, userData, { merge: true });
+      }
+
+      if (userData.isActive === false) {
+        await firebaseSignOut(auth);
+        return { success: false, message: 'This account has been deactivated by an administrator.' };
+      }
+
+      userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
+
+      return { success: true, user: userData };
+    } catch (e: any) {
+      console.error('Google Login Error:', e);
+      return { success: false, message: mapAuthError(e.code) };
     }
   },
 
-  verifyEmailWithCode: async (
-    actionCode: string
-  ): Promise<{ success: boolean; message?: string }> => {
+  resendVerificationEmail: async () => {
     try {
-      await applyActionCode(auth, actionCode);
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        return { success: true };
+      }
+      return { success: false, message: 'No user session found.' };
+    } catch (e: any) {
+      console.error('Resend Verification Error:', e);
+      return { success: false, message: mapAuthError(e.code) };
+    }
+  },
+
+  verifyEmailWithCode: async (oobCode: string) => {
+    try {
+      await applyActionCode(auth, oobCode);
       return { success: true };
     } catch (e: any) {
-      console.error('Failed to verify email with code', e);
-      return { success: false, message: 'Invalid or expired verification link.' };
+      console.error('Verification Code Error:', e);
+      return { success: false, message: mapAuthError(e.code) };
     }
   },
 
-  updateUser: async (u: User): Promise<void> => {
-    await updateDoc(doc(db, 'users', u.id), { ...u });
+  logout: async () => {
+    await firebaseSignOut(auth);
   },
 
-  adminSetUserPassword: async (_userId: string, _newPass: string): Promise<void> => {
-    console.warn('Password reset via Admin Panel requires Cloud Functions in Firebase.');
-    alert(
-      "Note: For security, Firebase does not allow admins to set user passwords directly from the client. Users must use 'Forgot Password'."
-    );
+  // USERS / GROUPS / PERMISSIONS ---------------------------------------------
+
+  updateUser: async (u: User) => {
+    const { effectivePermissions, ...dataToSave } = u as any;
+    await updateDoc(doc(db, 'users', u.id), dataToSave);
   },
 
-  // --- PERMISSIONS ---
+  adminSetUserPassword: async (_userId: string, _newPass: string) => {
+    console.warn('Password reset via Admin Panel requires Cloud Functions.');
+    alert("Note: For security, Firebase does not allow admins to set user passwords directly. Users must use 'Forgot Password'.");
+  },
 
   getUserGroups: async (): Promise<UserGroup[]> => {
     const snap = await getDocs(collection(db, 'user_groups'));
@@ -272,24 +310,14 @@ export const StorageService = {
     if (groups.length === 0) {
       return [
         { id: 'g-admin', name: 'Administrators', permissions: ['*'], description: 'Full Access' },
-        {
-          id: 'g-review',
-          name: 'Reviewers',
-          permissions: ['translation.review', 'translation.approve'],
-          description: 'Moderators'
-        },
-        {
-          id: 'g-trans',
-          name: 'Translators',
-          permissions: ['translation.create'],
-          description: 'Contributors'
-        }
+        { id: 'g-review', name: 'Reviewers', permissions: ['translation.review', 'translation.approve'], description: 'Moderators' },
+        { id: 'g-trans', name: 'Translators', permissions: ['translation.create'], description: 'Contributors' }
       ];
     }
     return groups;
   },
 
-  saveUserGroup: async (group: UserGroup): Promise<void> => {
+  saveUserGroup: async (group: UserGroup) => {
     await setDoc(doc(db, 'user_groups', group.id), group);
   },
 
@@ -301,29 +329,26 @@ export const StorageService = {
       const g = groups.find((x) => x.id === gid);
       if (g) groupPerms = [...groupPerms, ...g.permissions];
     });
-    return Array.from(new Set([...rolePerms, ...groupPerms]));
+    return Array.from(new Set([...rolePerms, ...groupPerms, ...(user.permissions || [])]));
   },
 
   hasPermission: (user: User | null, permission: Permission): boolean => {
-    if (!user || !user.effectivePermissions) return false;
-    return (
-      user.effectivePermissions.includes('*') || user.effectivePermissions.includes(permission)
-    );
+    return hasPermission(user, permission);
   },
 
-  // --- SPELLING & CORRECTIONS ---
+  // SPELLING SUGGESTIONS ------------------------------------------------------
 
-  createSpellingSuggestion: async (suggestion: SpellingSuggestion): Promise<void> => {
+  createSpellingSuggestion: async (suggestion: SpellingSuggestion) => {
     await setDoc(doc(db, 'spelling_suggestions', suggestion.id), suggestion);
   },
 
   getOpenSpellingSuggestions: async (): Promise<SpellingSuggestion[]> => {
-    const qSp = query(
+    const qRef = query(
       collection(db, 'spelling_suggestions'),
       where('status', '==', 'open'),
       orderBy('createdAt', 'desc')
     );
-    const snap = await getDocs(qSp);
+    const snap = await getDocs(qRef);
     return mapDocs<SpellingSuggestion>(snap);
   },
 
@@ -332,7 +357,7 @@ export const StorageService = {
     status: 'accepted' | 'rejected',
     resolver: User,
     rejectionReason?: string
-  ): Promise<void> => {
+  ) => {
     await runTransaction(db, async (transaction) => {
       const suggRef = doc(db, 'spelling_suggestions', suggestionId);
       const suggSnap = await transaction.get(suggRef);
@@ -346,24 +371,26 @@ export const StorageService = {
 
         const trans = transSnap.data() as Translation;
 
+        const details: any = {
+          oldText: suggestion.originalText,
+          newText: suggestion.suggestedText,
+          suggestionId: suggestion.id
+        };
+        if (suggestion.reason != null) {
+          details.reason = suggestion.reason;
+        }
+
         const historyEntry: TranslationHistoryEntry = {
           timestamp: Date.now(),
           action: 'spell_correction',
           userId: resolver.id,
           userName: resolver.name,
-          details: {
-            oldText: suggestion.originalText,
-            newText: suggestion.suggestedText,
-            reason: suggestion.reason,
-            suggestionId: suggestion.id
-          }
+          details
         };
-
-        const newHistory = [...(trans.history || []), historyEntry];
 
         transaction.update(transRef, {
           text: suggestion.suggestedText,
-          history: newHistory
+          history: [...(trans.history || []), historyEntry]
         });
       }
 
@@ -372,24 +399,24 @@ export const StorageService = {
         resolvedAt: Date.now(),
         resolvedByUserId: resolver.id,
         resolvedByUserName: resolver.name,
-        rejectionReason: rejectionReason || null
+        rejectionReason: rejectionReason ?? null
       });
     });
   },
 
-  // --- WORD CORRECTIONS ---
+  // WORD CORRECTIONS ----------------------------------------------------------
 
-  submitWordCorrection: async (correction: WordCorrection): Promise<void> => {
+  submitWordCorrection: async (correction: WordCorrection) => {
     await setDoc(doc(db, 'word_corrections', correction.id), correction);
   },
 
   getPendingWordCorrections: async (): Promise<WordCorrection[]> => {
-    const qCor = query(
+    const qRef = query(
       collection(db, 'word_corrections'),
       where('status', '==', 'pending'),
       orderBy('createdAt', 'desc')
     );
-    const snap = await getDocs(qCor);
+    const snap = await getDocs(qRef);
     return mapDocs<WordCorrection>(snap);
   },
 
@@ -397,7 +424,7 @@ export const StorageService = {
     correctionId: string,
     status: 'approved' | 'rejected',
     reviewer: { id: string; name: string }
-  ): Promise<void> => {
+  ) => {
     await updateDoc(doc(db, 'word_corrections', correctionId), {
       status,
       reviewedBy: reviewer.id,
@@ -406,70 +433,59 @@ export const StorageService = {
     });
   },
 
-  // --- REVIEW & HISTORY (RX2) ---
+  // TRANSLATION REVIEWS -------------------------------------------------------
 
   addTranslationReview: async (review: TranslationReview): Promise<void> => {
     try {
-      const safeReview: TranslationReview = {
-        ...review,
-        comment: review.comment ?? ''
-      };
+      // Clean review object (no undefineds)
+      const cleanReview: any = { ...review };
+      if (cleanReview.comment === undefined) delete cleanReview.comment;
+      if (cleanReview.previousText === undefined) delete cleanReview.previousText;
+      if (cleanReview.newText === undefined) delete cleanReview.newText;
 
-      await setDoc(doc(db, 'translationReviews', safeReview.id), safeReview);
+      await setDoc(doc(db, 'translationReviews', cleanReview.id), cleanReview);
 
+      // Decide new translation status based on review action
       let newStatus: Translation['status'] | undefined;
-      if (safeReview.action === 'approved') newStatus = 'approved';
-      else if (safeReview.action === 'rejected') newStatus = 'rejected';
-      else if (safeReview.action === 'edited') newStatus = 'approved';
+      if (review.action === 'approved') newStatus = 'approved';
+      else if (review.action === 'rejected') newStatus = 'rejected';
+      else if (review.action === 'edited') newStatus = 'approved';
+      else if (review.action === 'needs_attention') newStatus = 'needs_attention';
 
-      const transRef = doc(db, 'translations', safeReview.translationId);
+      const transRef = doc(db, 'translations', review.translationId);
 
       await runTransaction(db, async (transaction) => {
         const transDoc = await transaction.get(transRef);
         if (!transDoc.exists()) throw 'Translation not found';
-
         const data = transDoc.data() as Translation;
-        const currentCount = data.reviewCount || 0;
 
         const updates: any = {
-          reviewCount: currentCount + 1,
+          reviewCount: (data.reviewCount || 0) + 1,
           lastReviewedAt: review.createdAt,
           lastReviewerId: review.reviewerId,
           reviewedBy: review.reviewerId,
           reviewedAt: review.createdAt
         };
 
-        if (newStatus) {
-          updates.status = newStatus;
+        if (newStatus) updates.status = newStatus;
+        if (review.action === 'edited' && review.newText) {
+          updates.text = review.newText;
         }
 
-        if (safeReview.action === 'edited' && safeReview.newText) {
-          updates.text = safeReview.newText;
-        }
+        const details: any = {};
+        if (review.previousText !== undefined) details.oldText = review.previousText;
+        if (review.newText !== undefined) details.newText = review.newText;
+        if (review.comment !== undefined) details.reason = review.comment;
 
         const historyEntry: TranslationHistoryEntry = {
-  timestamp: safeReview.createdAt,
-  action:
-    safeReview.action === 'edited'
-      ? 'edited'
-      : safeReview.action === 'approved'
-      ? 'approved'
-      : 'rejected',
-  userId: safeReview.reviewerId,
-  userName: safeReview.reviewerName,
-  details: {
-    reason: safeReview.comment || '',  // Already safe, but explicit
-    // Fallback logic: Use current text for approve/reject; only override for edits
-    ...(safeReview.action === 'edited' ? {
-      oldText: safeReview.previousText || data.text,
-      newText: safeReview.newText || data.text
-    } : {
-      oldText: data.text,
-      newText: data.text
-    })
-  }
-};
-updates.history = [...(data.history || []), historyEntry];
+          timestamp: review.createdAt,
+          action: review.action === 'edited' ? 'edited' : review.action,
+          userId: review.reviewerId,
+          userName: review.reviewerName,
+          ...(Object.keys(details).length ? { details } : {})
+        };
+
+        updates.history = [...(data.history || []), historyEntry];
 
         transaction.update(transRef, updates);
       });
@@ -479,11 +495,7 @@ updates.history = [...(data.history || []), historyEntry];
     }
   },
 
-  applyMinorFix: async (
-    translationId: string,
-    newText: string,
-    reviewer: User
-  ): Promise<void> => {
+  applyMinorFix: async (translationId: string, newText: string, reviewer: User): Promise<void> => {
     try {
       const transRef = doc(db, 'translations', translationId);
       const snap = await getDoc(transRef);
@@ -497,7 +509,7 @@ updates.history = [...(data.history || []), historyEntry];
         reviewerName: reviewer.name,
         action: 'edited',
         previousText: oldText,
-        newText: newText,
+        newText,
         comment: 'Minor fix applied by reviewer',
         createdAt: Date.now()
       };
@@ -511,12 +523,12 @@ updates.history = [...(data.history || []), historyEntry];
 
   getTranslationReviews: async (translationId: string): Promise<TranslationReview[]> => {
     try {
-      const qRev = query(
+      const qRef = query(
         collection(db, 'translationReviews'),
         where('translationId', '==', translationId),
         orderBy('createdAt', 'desc')
       );
-      const snap = await getDocs(qRev);
+      const snap = await getDocs(qRef);
       return mapDocs<TranslationReview>(snap);
     } catch (error) {
       console.error('Failed to fetch reviews:', error);
@@ -524,19 +536,19 @@ updates.history = [...(data.history || []), historyEntry];
     }
   },
 
-  // --- COMMUNITY REPORTING ---
+  // REPORTS -------------------------------------------------------------------
 
-  createReport: async (report: Report): Promise<void> => {
+  createReport: async (report: Report) => {
     await setDoc(doc(db, 'reports', report.id), report);
   },
 
   getReports: async (): Promise<Report[]> => {
-    const qRep = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-    const snap = await getDocs(qRep);
+    const qRef = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    const snap = await getDocs(qRef);
     return mapDocs<Report>(snap);
   },
 
-  // --- DICTIONARY ---
+  // WORDS ---------------------------------------------------------------------
 
   getWords: async (): Promise<Word[]> => {
     const snap = await getDocs(collection(db, 'words'));
@@ -548,38 +560,23 @@ updates.history = [...(data.history || []), historyEntry];
     return snap.exists() ? (snap.data() as Word) : null;
   },
 
-  // 🔒 BLOCK DUPLICATE ENGLISH WORDS
-  saveWord: async (word: Word): Promise<void> => {
+  saveWord: async (word: Word) => {
     const now = Date.now();
-
-    const normalizedText = (word.normalizedText || word.text || '').toLowerCase().trim();
-    if (!normalizedText) {
-      throw new Error('Word text is required.');
-    }
-
-    const wordsRef = collection(db, 'words');
-    const qCheck = query(wordsRef, where('normalizedText', '==', normalizedText));
-    const snap = await getDocs(qCheck);
-
-    const duplicate = snap.docs.find((docSnap) => docSnap.id !== word.id);
-    if (duplicate) {
-      throw new Error('This English word already exists in the dictionary.');
-    }
-
     const enhancedWord: any = {
       ...word,
-      normalizedText,
+      normalizedText: word.normalizedText || word.text.toLowerCase().trim(),
       createdAt: word.createdAt || now,
       updatedAt: now
     };
 
     if (enhancedWord.notes === undefined) delete enhancedWord.notes;
     if (enhancedWord.updatedBy === undefined) delete enhancedWord.updatedBy;
+    if (enhancedWord.createdBy === undefined) delete enhancedWord.createdBy;
 
     await setDoc(doc(db, 'words', word.id), enhancedWord, { merge: true });
   },
 
-  deleteWord: async (id: string): Promise<void> => {
+  deleteWord: async (id: string) => {
     await deleteDoc(doc(db, 'words', id));
   },
 
@@ -587,7 +584,6 @@ updates.history = [...(data.history || []), historyEntry];
     const allWords = await StorageService.getWords();
     const lowerQ = queryStr.toLowerCase().trim();
     if (!lowerQ) return allWords;
-
     return allWords.filter(
       (w) =>
         w.text.toLowerCase().includes(lowerQ) ||
@@ -596,12 +592,10 @@ updates.history = [...(data.history || []), historyEntry];
     );
   },
 
-  recomputeWordFrequencies: async (): Promise<void> => {
+  recomputeWordFrequencies: async () => {
     try {
-      console.log('Starting frequency recomputation...');
       const sentencesRef = collection(db, 'sentences');
       const sSnap = await getDocs(sentencesRef);
-
       const frequencyMap = new Map<string, number>();
 
       sSnap.docs.forEach((docSnap) => {
@@ -609,26 +603,21 @@ updates.history = [...(data.history || []), historyEntry];
         if (!text) return;
         const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
         words.forEach((w) => {
-          if (w.length > 1) {
-            frequencyMap.set(w, (frequencyMap.get(w) || 0) + 1);
-          }
+          if (w.length > 1) frequencyMap.set(w, (frequencyMap.get(w) || 0) + 1);
         });
       });
 
       const wordsRef = collection(db, 'words');
       const wSnap = await getDocs(wordsRef);
-
       let batch = writeBatch(db);
       let count = 0;
 
       for (const wDoc of wSnap.docs) {
         const word = wDoc.data() as Word;
         const newFreq = frequencyMap.get(word.normalizedText || '') || 0;
-
         if (word.frequency !== newFreq) {
           batch.update(wDoc.ref, { frequency: newFreq, updatedAt: Date.now() });
           count++;
-
           if (count >= 450) {
             await batch.commit();
             batch = writeBatch(db);
@@ -636,19 +625,17 @@ updates.history = [...(data.history || []), historyEntry];
           }
         }
       }
-
       if (count > 0) await batch.commit();
-      console.log('Frequency recomputation complete.');
     } catch (e) {
-      console.error('Frequency recomputation failed:', e);
+      console.error(e);
     }
   },
 
-  // --- DATA & QUEUE LOGIC ---
+  // SENTENCES -----------------------------------------------------------------
 
   getSentences: async (): Promise<Sentence[]> => {
-    const qSent = query(collection(db, 'sentences'), limit(2000));
-    const snap = await getDocs(qSent);
+    const qRef = query(collection(db, 'sentences'), limit(2000));
+    const snap = await getDocs(qRef);
     return snap.docs.map((d) => d.data() as Sentence);
   },
 
@@ -660,14 +647,10 @@ updates.history = [...(data.history || []), historyEntry];
     return score;
   },
 
-  getSmartQueueTask: async (
-    user: User,
-    excludedIds: number[] = []
-  ): Promise<Sentence | null> => {
+  getSmartQueueTask: async (user: User, excludedIds: number[] = []): Promise<Sentence | null> => {
     try {
       const sentencesRef = collection(db, 'sentences');
       const now = Date.now();
-
       const isExperienced = (user.translatedSentenceIds?.length || 0) > 200;
 
       let qPriority = query(
@@ -676,7 +659,6 @@ updates.history = [...(data.history || []), historyEntry];
         orderBy('priorityScore', 'desc'),
         limit(500)
       );
-
       let snap = await getDocs(qPriority);
       let candidates = snap.docs.map((d) => d.data() as Sentence);
 
@@ -687,7 +669,7 @@ updates.history = [...(data.history || []), historyEntry];
       }
 
       const findValid = (list: Sentence[]) => {
-        const shuffled = [...list].sort(() => 0.5 - Math.random());
+        const shuffled = list.sort(() => 0.5 - Math.random());
         return shuffled.find((s) => {
           if (excludedIds.includes(s.id)) return false;
           const isLocked =
@@ -699,7 +681,6 @@ updates.history = [...(data.history || []), historyEntry];
       };
 
       let validTask = findValid(candidates);
-
       if (!validTask) {
         const qFallback = query(sentencesRef, where('status', '==', 'open'), limit(100));
         snap = await getDocs(qFallback);
@@ -737,20 +718,61 @@ updates.history = [...(data.history || []), historyEntry];
       });
       return true;
     } catch (e) {
-      console.log('Lock failed:', e);
+      console.log(e);
       return false;
     }
   },
 
-  unlockSentence: async (sentenceId: string): Promise<void> => {
+  unlockSentence: async (sentenceId: string) => {
     const ref = doc(db, 'sentences', sentenceId);
     await updateDoc(ref, { lockedBy: null, lockedUntil: null });
   },
 
-  submitTranslation: async (translation: Translation, user: User): Promise<void> => {
+  saveSentences: async (sentences: any[], onProgress?: (count: number) => void) => {
+    const CHUNK_SIZE = 450;
+    for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
+      const chunk = sentences.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((s) => {
+        if (s.id && s.english) {
+          const ref = doc(db, 'sentences', s.id.toString());
+          let diff: 1 | 2 | 3 = 2;
+          if (s.english.length < 20) diff = 1;
+          if (s.english.length > 100) diff = 3;
+          const enhancedSentence: Sentence = {
+            priorityScore: StorageService.calculateInitialPriority(s.english),
+            status: 'open',
+            translationCount: 0,
+            targetTranslations: TARGET_REDUNDANCY,
+            lockedBy: null,
+            lockedUntil: null,
+            difficulty: diff,
+            length: s.english.length,
+            projectId: s.projectId,
+            id: s.id,
+            english: s.english,
+            ...s
+          };
+          batch.set(ref, enhancedSentence);
+        }
+      });
+      await batch.commit();
+      if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  },
+
+  getSentenceCount: async (): Promise<number> => {
+    const coll = collection(db, 'sentences');
+    const snapshot = await getCountFromServer(coll);
+    return snapshot.data().count;
+  },
+
+  // TRANSLATIONS --------------------------------------------------------------
+
+  submitTranslation: async (translation: Translation, user: User) => {
     const batch = writeBatch(db);
     const transRef = doc(db, 'translations', translation.id);
-
     batch.set(transRef, translation);
 
     if (translation.status === 'pending') {
@@ -770,6 +792,7 @@ updates.history = [...(data.history || []), historyEntry];
         }
         batch.update(sentenceRef, updates);
       }
+
       const userRef = doc(db, 'users', user.id);
       const newHistory = [...(user.translatedSentenceIds || []), translation.sentenceId];
       const uniqueHistory = Array.from(new Set(newHistory));
@@ -779,93 +802,76 @@ updates.history = [...(data.history || []), historyEntry];
     await batch.commit();
   },
 
-  saveTranslation: async (translation: Translation): Promise<void> => {
+  saveTranslation: async (translation: Translation) => {
     await setDoc(doc(db, 'translations', translation.id), translation, { merge: true });
   },
 
-  // ✅ NEW: used by App.tsx
   getTranslations: async (): Promise<Translation[]> => {
     const snap = await getDocs(collection(db, 'translations'));
     return mapDocs<Translation>(snap);
   },
 
-  getSentenceCount: async (): Promise<number> => {
-    const coll = collection(db, 'sentences');
-    const snapshot = await getCountFromServer(coll);
-    return snapshot.data().count;
+  deleteTranslation: async (id: string) => {
+    await deleteDoc(doc(db, 'translations', id));
   },
 
-  saveSentences: async (
-    sentences: any[],
-    onProgress?: (count: number) => void
-  ): Promise<void> => {
-    const CHUNK_SIZE = 450;
-    for (let i = 0; i < sentences.length; i += CHUNK_SIZE) {
-      const chunk = sentences.slice(i, i + CHUNK_SIZE);
-      const batch = writeBatch(db);
-      chunk.forEach((s) => {
-        if (s.id) {
-          const ref = doc(db, 'sentences', s.id.toString());
-          let diff: 1 | 2 | 3 = 2;
-          if (s.english.length < 20) diff = 1;
-          if (s.english.length > 100) diff = 3;
+  // PROJECTS ------------------------------------------------------------------
 
-          const enhancedSentence: Sentence = {
-            ...s,
-            priorityScore: StorageService.calculateInitialPriority(s.english),
-            status: 'open',
-            translationCount: 0,
-            targetTranslations: TARGET_REDUNDANCY,
-            lockedBy: null,
-            lockedUntil: null,
-            difficulty: diff,
-            length: s.english.length
-          };
-          batch.set(ref, enhancedSentence);
+  getProjects: async (): Promise<Project[]> => {
+    const snap = await getDocs(collection(db, 'projects'));
+    const projects = mapDocs<Project>(snap);
+    if (projects.length === 0) {
+      return [
+        {
+          id: 'default-project',
+          name: 'General',
+          targetLanguageCode: 'hula',
+          status: 'active',
+          createdAt: Date.now()
         }
-      });
-      await batch.commit();
-      if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, sentences.length));
-      await new Promise((r) => setTimeout(r, 200));
+      ];
     }
+    return projects;
   },
 
-  // --- WORD TRANSLATIONS ---
+  saveProject: async (project: Project) => {
+    await setDoc(doc(db, 'projects', project.id), project);
+  },
+
+  // WORD TRANSLATIONS ---------------------------------------------------------
 
   getWordTranslations: async (): Promise<WordTranslation[]> => {
     const snap = await getDocs(collection(db, 'word_translations'));
     return mapDocs<WordTranslation>(snap);
   },
 
-  saveWordTranslation: async (wt: WordTranslation): Promise<void> => {
+  saveWordTranslation: async (wt: WordTranslation) => {
     await setDoc(doc(db, 'word_translations', wt.id), wt);
   },
 
-  // --- ANNOUNCEMENTS ---
+  // ANNOUNCEMENTS / FORUM -----------------------------------------------------
 
   getAnnouncements: async (): Promise<Announcement[]> => {
-    const qAnn = query(collection(db, 'announcements'), orderBy('date', 'desc'));
-    const snap = await getDocs(qAnn);
+    const qRef = query(collection(db, 'announcements'), orderBy('date', 'desc'));
+    const snap = await getDocs(qRef);
     return mapDocs<Announcement>(snap);
   },
 
-  saveAnnouncement: async (a: Announcement): Promise<void> => {
+  saveAnnouncement: async (a: Announcement) => {
     await setDoc(doc(db, 'announcements', a.id), a);
   },
 
-  // --- FORUM ---
-
   getForumTopics: async (): Promise<ForumTopic[]> => {
-    const qTop = query(collection(db, 'forum_topics'), orderBy('date', 'desc'));
-    const snap = await getDocs(qTop);
+    const qRef = query(collection(db, 'forum_topics'), orderBy('date', 'desc'));
+    const snap = await getDocs(qRef);
     return mapDocs<ForumTopic>(snap);
   },
 
-  saveForumTopic: async (t: ForumTopic): Promise<void> => {
+  saveForumTopic: async (t: ForumTopic) => {
     await setDoc(doc(db, 'forum_topics', t.id), t);
   },
 
-  // --- SYSTEM SETTINGS ---
+  // SYSTEM SETTINGS -----------------------------------------------------------
 
   getSystemSettings: async (): Promise<SystemSettings> => {
     const docRef = doc(db, 'system_settings', 'global');
@@ -874,81 +880,46 @@ updates.history = [...(data.history || []), historyEntry];
     return { showDemoBanner: true, maintenanceMode: false };
   },
 
-  saveSystemSettings: async (s: SystemSettings): Promise<void> => {
+  saveSystemSettings: async (s: SystemSettings) => {
     await setDoc(doc(db, 'system_settings', 'global'), s);
   },
 
-  // --- PROJECTS (NEW) ---
-
-  getProjects: async (): Promise<Project[]> => {
-    const snap = await getDocs(collection(db, 'projects'));
-    return mapDocs<Project>(snap);
-  },
-
-  saveProject: async (project: Project): Promise<void> => {
-    await setDoc(doc(db, 'projects', project.id), project, { merge: true });
-  },
-
-  // --- USERS ---
+  // USERS LIST / CURRENT USER -------------------------------------------------
 
   getAllUsers: async (): Promise<User[]> => {
     const snap = await getDocs(collection(db, 'users'));
     return mapDocs<User>(snap);
   },
 
-  getCurrentUser: async (): Promise<User | null> => {
+  getCurrentUser: (): User | null => {
     const u = auth.currentUser;
     if (!u) return null;
-
-    const userDocRef = doc(db, 'users', u.uid);
-    const userDocSnap = await getDoc(userDocRef);
-
-    if (!userDocSnap.exists()) {
-      // Fallback for new/missing users (e.g., just registered)
-      await signOut(auth);
-      return null;
-    }
-
-    let userData = userDocSnap.data() as User;
-    userData.id = u.uid;  // Ensure ID sync
-    userData.email = u.email || userData.email;  // Sync from Auth
-
-    // Admin override (mirrors login logic)
-    const isAdminEmail = userData.email?.toLowerCase() === 'brime.olewale@gmail.com';
-    if (isAdminEmail) {
-      userData = {
-        ...userData,
-        isVerified: true,
-        role: 'admin',
-        groupIds: ['g-admin'],
-        effectivePermissions: ['*']
-      };
-      await setDoc(userDocRef, userData, { merge: true });  // Persist
-    }
-
-    // Sync isVerified with Firebase if possible
-    if (u.emailVerified && userData.isVerified !== true) {
-      await updateDoc(userDocRef, { isVerified: true });
-      userData.isVerified = true;
-    }
-
-    userData.effectivePermissions = await StorageService.calculateEffectivePermissions(userData);
-    return userData;
+    return {
+      id: u.uid,
+      name: u.displayName || 'User',
+      email: u.email || '',
+      role: 'guest',
+      isActive: true,
+      emailVerified: u.emailVerified,
+      permissions: [],
+      createdAt: Date.now()
+    };
   },
 
-  getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
+  // LANGUAGE TARGET -----------------------------------------------------------
 
+  getTargetLanguage: () => ({ code: 'hula', name: 'Hula' }),
   setTargetLanguage: () => {},
 
-  clearAll: async (): Promise<void> => {
+  // ADMIN / UTILITIES ---------------------------------------------------------
+
+  clearAll: async () => {
     console.warn('Clear All disabled in Cloud Mode for safety');
   },
 
-  // --- AUDIT LOGS ---
-
   getAuditLogs: async (): Promise<AuditLog[]> => {
-    const qLog = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
-    const snap = await getDocs(qLog);
+    const qRef = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(200));
+    const snap = await getDocs(qRef);
     return mapDocs<AuditLog>(snap);
   },
 
@@ -957,7 +928,7 @@ updates.history = [...(data.history || []), historyEntry];
     action: string,
     details: string,
     category: AuditLog['category'] = 'system'
-  ): Promise<void> => {
+  ) => {
     await addDoc(collection(db, 'audit_logs'), {
       action,
       userId: user.id,
